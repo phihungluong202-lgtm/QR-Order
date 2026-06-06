@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.99 0.002 95);
+  --foreground: oklch(0.2 0.02 30);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 30);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 30);
+  --primary: oklch(0.55 0.2 25);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 95);
+  --secondary-foreground: oklch(0.3 0.02 30);
+  --muted: oklch(0.96 0.008 95);
+  --muted-foreground: oklch(0.5 0.02 40);
+  --accent: oklch(0.94 0.03 85);
+  --accent-foreground: oklch(0.25 0.04 30);
+  --destructive: oklch(0.55 0.22 25);
+  --border: oklch(0.92 0.01 95);
+  --input: oklch(0.92 0.01 95);
+  --ring: oklch(0.55 0.2 25);
+  --brand: oklch(0.62 0.19 35);
+  --brand-foreground: oklch(0.99 0 0);
+}
+
+.dark {
+  --background: oklch(0.14 0.015 30);
+  --foreground: oklch(0.96 0.01 95);
+  --card: oklch(0.18 0.015 30);
+  --card-foreground: oklch(0.96 0.01 95);
+  --popover: oklch(0.18 0.015 30);
+  --popover-foreground: oklch(0.96 0.01 95);
+  --primary: oklch(0.68 0.18 35);
+  --primary-foreground: oklch(0.14 0.02 30);
+  --secondary: oklch(0.22 0.015 30);
+  --secondary-foreground: oklch(0.92 0.01 95);
+  --muted: oklch(0.22 0.015 30);
+  --muted-foreground: oklch(0.65 0.02 40);
+  --accent: oklch(0.25 0.03 40);
+  --accent-foreground: oklch(0.96 0.01 95);
+  --destructive: oklch(0.6 0.2 25);
+  --border: oklch(0.28 0.015 30);
+  --input: oklch(0.28 0.015 30);
+  --ring: oklch(0.68 0.18 35);
+  --brand: oklch(0.7 0.17 38);
+  --brand-foreground: oklch(0.14 0.02 30);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* ─── Animations ──────────────────────────────────────────────────────────── */
+
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+@keyframes bounce-in {
+  0%   { transform: scale(0.6); opacity: 0; }
+  55%  { transform: scale(1.08); opacity: 1; }
+  80%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Utilities ───────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .gradient-brand {
+    background: linear-gradient(
+      135deg,
+      oklch(0.62 0.19 35) 0%,
+      oklch(0.55 0.22 20) 100%
+    );
+  }
+  .glass {
+    @apply border border-white/20 bg-white/80 backdrop-blur-xl dark:border-white/10 dark:bg-black/40;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  .menu-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Skeleton shimmer — apply to the placeholder element */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--muted);
+    border-radius: var(--radius-sm);
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(1 0 0 / 0.18) 50%,
+      transparent 100%
+    );
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  .dark .skeleton::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(1 0 0 / 0.08) 50%,
+      transparent 100%
+    );
+  }
+
+  /* Animation helpers */
+  .animate-bounce-in { animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+  .animate-fade-up    { animation: fade-up 0.35s ease forwards; }
+  .animate-pop        { animation: pop 0.35s ease forwards; }
+  .animate-slide-up   { animation: slide-up 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+
+  /* Press scale utility — gives tactile feel on any tappable */
+  .press { @apply transition-transform active:scale-[0.96] touch-manipulation; }
+
+  /* Card hover lift */
+  .card-lift {
+    @apply transition-shadow duration-200 hover:shadow-md;
+  }
+}

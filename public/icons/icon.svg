@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#e85d3a"/>
+  <path d="M128 200h256v32H128v-32zm0 80h192v32H128v-32zm64 120l-48 48h224l-48-48H192z" fill="white"/>
+  <circle cx="360" cy="160" r="48" fill="white" fill-opacity="0.9"/>
+  <text x="360" y="175" text-anchor="middle" font-size="48" font-weight="bold" fill="#e85d3a">QR</text>
+</svg>

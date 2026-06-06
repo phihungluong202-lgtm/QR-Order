@@ -85,19 +85,24 @@ export const logger = {
 
 // ─── Helper: safe async wrapper ───────────────────────────────────────────────
 
+type NextRouteHandler = (
+  request: Request,
+  context?: { params?: Promise<Record<string, string>> },
+) => Promise<Response>;
+
 /**
- * Wraps an async function; catches and logs any unhandled rejection.
+ * Wraps a Next.js route handler; catches and logs any unhandled rejection.
  *
  * @example
  *   export const GET = safeRoute(async (req) => { ... });
  */
-export function safeRoute<T extends (...args: never[]) => Promise<Response>>(
-  handler: T,
+export function safeRoute(
+  handler: NextRouteHandler,
   routeName?: string,
-): T {
-  return (async (...args: Parameters<T>) => {
+): NextRouteHandler {
+  return async (request, context) => {
     try {
-      return await handler(...args);
+      return await handler(request, context);
     } catch (err) {
       logger.error(`Unhandled error in ${routeName ?? "route"}`, err);
       const { NextResponse } = await import("next/server");
@@ -106,5 +111,5 @@ export function safeRoute<T extends (...args: never[]) => Promise<Response>>(
         { status: 500 },
       );
     }
-  }) as T;
+  };
 }

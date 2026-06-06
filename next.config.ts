@@ -68,8 +68,8 @@ const nextConfig: NextConfig = {
   },
 
   experimental: {
-    // Tree-shake large icon/animation packages
-    optimizePackageImports: ["lucide-react", "framer-motion"],
+    // lucide-react is safe to tree-shake; framer-motion removed (can conflict)
+    optimizePackageImports: ["lucide-react"],
   },
 };
 
@@ -77,8 +77,8 @@ const nextConfig: NextConfig = {
 const withSerwist = withSerwistInit({
   swSrc: "src/sw.ts",
   swDest: "public/sw.js",
-  // Disable in dev — avoids caching stale assets during development
-  disable: isDev,
+  // Keep disabled until basic deployment is confirmed working
+  disable: true,
 });
 
-export default isDev ? nextConfig : withSerwist(nextConfig);
+export default withSerwist(nextConfig);

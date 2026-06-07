@@ -32,8 +32,14 @@ const PRINT_STYLES = `
 
 // ─── Individual QR card (print-optimised) ─────────────────────────────────────
 
+function getTableUrl(qrCode: string) {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : env.appUrl;
+  return `${origin}/t/${env.restaurantSlug}/${qrCode}`;
+}
+
 function QrCard({ table }: { table: Table }) {
-  const url = `${env.appUrl}/t/${env.restaurantSlug}/${table.qr_code}`;
+  const url = getTableUrl(table.qr_code);
   const download = useQrDownload(url, "M");
 
   return (
@@ -86,7 +92,7 @@ function DownloadAllButton({ tables }: { tables: Table[] }) {
   async function downloadAll() {
     const { generateQr, downloadQrPng } = await import("@/lib/qr-generator");
     for (const t of tables) {
-      const url = `${env.appUrl}/t/${env.restaurantSlug}/${t.qr_code}`;
+      const url = getTableUrl(t.qr_code);
       const matrix = generateQr(url, "M");
       downloadQrPng(matrix, `table-${t.label}-qr.png`, { scale: 4 });
       // Small delay between downloads to avoid browser blocking

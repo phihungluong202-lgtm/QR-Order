@@ -47,8 +47,17 @@ function QrDownloadButton({ url, filename }: { url: string; filename: string }) 
 
 // ─── QR modal ────────────────────────────────────────────────────────────────
 
+// Always use the live origin so QR codes work regardless of NEXT_PUBLIC_APP_URL
+function getTableUrl(qrCode: string) {
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : env.appUrl;
+  return `${origin}/t/${env.restaurantSlug}/${qrCode}`;
+}
+
 function QrModal({ table, onClose }: { table: Table; onClose: () => void }) {
-  const url = `${env.appUrl}/t/${env.restaurantSlug}/${table.qr_code}`;
+  const url = getTableUrl(table.qr_code);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -207,7 +216,7 @@ function TableCard({
   onDelete: () => void;
   onToggle: () => void;
 }) {
-  const url = `${env.appUrl}/t/${env.restaurantSlug}/${table.qr_code}`;
+  const url = getTableUrl(table.qr_code);
 
   return (
     <Card className={cn("overflow-hidden transition-opacity", !table.is_active && "opacity-60")}>

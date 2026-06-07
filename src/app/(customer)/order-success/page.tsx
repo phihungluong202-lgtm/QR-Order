@@ -142,8 +142,7 @@ function useTableOrders() {
           )
         `)
         .eq("table_id", tableId!)
-        // Exclude terminal statuses — paid/served belong to past sessions
-        .not("status", "in", '("cancelled","paid","served")')
+        .not("status", "in", '("cancelled")')
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(5);

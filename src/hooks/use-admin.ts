@@ -244,3 +244,18 @@ export function useUpdateOrderStatus() {
     },
   });
 }
+
+export function usePayTable(restaurantId = R) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tableId: string) =>
+      apiFetch<{ success: boolean; count: number; total: number }>(
+        "/api/orders/pay-table",
+        { method: "POST", body: JSON.stringify({ tableId }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.orders(restaurantId) });
+      qc.invalidateQueries({ queryKey: adminKeys.stats(restaurantId) });
+    },
+  });
+}

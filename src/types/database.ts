@@ -4,6 +4,7 @@ export type OrderStatus =
   | "preparing"
   | "ready"
   | "served"
+  | "paid"
   | "cancelled";
 
 export type AdminRole = "admin" | "kitchen" | "waiter";

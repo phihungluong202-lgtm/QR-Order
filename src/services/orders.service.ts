@@ -173,4 +173,29 @@ export class OrdersService {
     if (!data) throw new Error("Order not found");
     return data;
   }
+
+  /** Mark all non-cancelled orders for a table as paid */
+  async payTable(tableId: string): Promise<{ count: number; total: number }> {
+    const { data: orders, error: fetchError } = await this.client
+      .from("orders")
+      .select("id, total, status")
+      .eq("table_id", tableId)
+      .not("status", "in", '("cancelled","paid")')
+      .is("deleted_at", null);
+
+    assertNoError(fetchError);
+    if (!orders || orders.length === 0) return { count: 0, total: 0 };
+
+    const now = new Date().toISOString();
+    const ids = orders.map((o) => o.id);
+    const total = orders.reduce((s, o) => s + (o.total ?? 0), 0);
+
+    const { error: updateError } = await this.client
+      .from("orders")
+      .update({ status: "paid", paid_at: now, updated_at: now })
+      .in("id", ids);
+
+    assertNoError(updateError);
+    return { count: ids.length, total };
+  }
 }

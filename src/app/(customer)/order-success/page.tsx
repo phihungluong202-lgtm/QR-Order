@@ -8,6 +8,7 @@ import {
   ChefHat,
   ClipboardList,
   Clock,
+  CreditCard,
   ShoppingBag,
   UtensilsCrossed,
   X,
@@ -119,6 +120,7 @@ const STATUS_STEPS: {
   { status: "preparing", Icon: ChefHat,         label: "Preparing",      desc: "Kitchen is preparing your food" },
   { status: "ready",     Icon: CheckCircle2,    label: "Ready!",         desc: "Your food is ready — enjoy! 🎉" },
   { status: "served",    Icon: UtensilsCrossed, label: "Served",         desc: "Enjoy your meal!" },
+  { status: "paid",      Icon: CreditCard,      label: "Paid ✓",        desc: "Payment received — thank you! 🙏" },
 ];
 
 const STATUS_ORDER: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "served"];
@@ -401,6 +403,7 @@ function SuccessContent() {
   const orderId = params.get("orderId");
   const { status, items, total, loaded } = useLiveOrder(orderId);
   const isCancelled = status === "cancelled";
+  const isPaid = status === "paid";
 
   return (
     <>
@@ -421,7 +424,10 @@ function SuccessContent() {
             {!isCancelled && [0, 1, 2].map((i) => (
               <motion.span
                 key={i}
-                className="absolute inset-0 rounded-full border-2 border-emerald-400"
+                className={cn(
+                  "absolute inset-0 rounded-full border-2",
+                  isPaid ? "border-teal-400" : "border-emerald-400",
+                )}
                 initial={{ opacity: 0.7, scale: 1 }}
                 animate={{ opacity: 0, scale: 2.5 }}
                 transition={{ duration: 1.4, delay: i * 0.3 + 0.2, repeat: Infinity, repeatDelay: 1, ease: "easeOut" }}
@@ -429,10 +435,14 @@ function SuccessContent() {
             ))}
             <div className={cn(
               "absolute inset-0 rounded-full",
-              isCancelled ? "bg-red-50 dark:bg-red-950" : "bg-emerald-50 dark:bg-emerald-950",
+              isCancelled ? "bg-red-50 dark:bg-red-950"
+              : isPaid ? "bg-teal-50 dark:bg-teal-950"
+              : "bg-emerald-50 dark:bg-emerald-950",
             )} />
             {isCancelled
               ? <X className="relative h-14 w-14 text-red-500" strokeWidth={1.5} />
+              : isPaid
+              ? <CreditCard className="relative h-14 w-14 text-teal-500" strokeWidth={1.5} />
               : <CheckCircle2 className="relative h-14 w-14 text-emerald-500" strokeWidth={1.5} />
             }
           </motion.div>
@@ -443,7 +453,7 @@ function SuccessContent() {
             transition={{ delay: 0.3 }}
             className="text-3xl font-extrabold tracking-tight"
           >
-            {isCancelled ? "Order cancelled" : "Order sent! 🎉"}
+            {isCancelled ? "Order cancelled" : isPaid ? "Payment received! 🙏" : "Order sent! 🎉"}
           </motion.h1>
 
           <motion.p
@@ -454,6 +464,8 @@ function SuccessContent() {
           >
             {isCancelled
               ? "Your order was cancelled. Please place a new order."
+              : isPaid
+              ? "Thank you for dining with us. See you again soon!"
               : "Sit back and relax — we'll bring it right to your table."}
           </motion.p>
 

@@ -102,51 +102,57 @@ export class OrdersService {
   }
 
   async addItems(orderId: string, items: CreateOrderLineInput[]): Promise<Order> {
-    // Fetch current order to verify it exists and get restaurant context
+    // Fetch current order
     const { data: order, error: orderError } = await this.client
       .from("orders")
-      .select("id, total")
+      .select("id, total, status")
       .eq("id", orderId)
       .is("deleted_at", null)
       .single();
     assertNoError(orderError);
     if (!order) throw new Error("Order not found");
 
-    // Resolve prices and insert new items
-    const newItems = await Promise.all(
-      items.map(async (line) => {
-        const { data: menuItem, error } = await this.client
-          .from("menu_items")
-          .select("price")
-          .eq("id", line.menuItemId)
-          .single();
-        assertNoError(error);
-        const price = menuItem?.price ?? 0;
-        return {
-          order_id: orderId,
-          menu_item_id: line.menuItemId,
-          quantity: line.quantity,
-          unit_price: price,
-          notes: line.notes ?? null,
-          extra_total: price * line.quantity,
-        };
-      }),
-    );
+    // Resolve unit prices for each item
+    const resolvedItems: {
+      order_id: string;
+      menu_item_id: string;
+      quantity: number;
+      unit_price: number;
+      notes: string | null;
+      lineTotal: number;
+    }[] = [];
 
-    const addedTotal = newItems.reduce((s, i) => s + i.extra_total, 0);
+    for (const line of items) {
+      const { data: menuItem, error } = await this.client
+        .from("menu_items")
+        .select("price")
+        .eq("id", line.menuItemId)
+        .single();
+      assertNoError(error);
+      const price = menuItem?.price ?? 0;
+      resolvedItems.push({
+        order_id: orderId,
+        menu_item_id: line.menuItemId,
+        quantity: line.quantity,
+        unit_price: price,
+        notes: line.notes ?? null,
+        lineTotal: price * line.quantity,
+      });
+    }
 
+    // Insert new order_items (strip lineTotal helper field)
     const { error: insertError } = await this.client
       .from("order_items")
-      .insert(newItems.map(({ extra_total: _, ...i }) => i));
+      .insert(
+        resolvedItems.map(({ lineTotal: _ignored, ...row }) => row),
+      );
     assertNoError(insertError);
 
     // Update order total
+    const addedTotal = resolvedItems.reduce((s, i) => s + i.lineTotal, 0);
     const { data: updated, error: updateError } = await this.client
       .from("orders")
-      .update({
-        total: (order.total ?? 0) + addedTotal,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ total: (order.total ?? 0) + addedTotal })
       .eq("id", orderId)
       .select()
       .single();

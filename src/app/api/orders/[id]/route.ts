@@ -55,6 +55,7 @@ export async function POST(
     return NextResponse.json({ order });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to add items";
+    console.error("[POST /api/orders/:id/items]", message, e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

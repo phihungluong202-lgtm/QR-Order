@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
+import { updateOrderStatus } from "@/api/orders";
 import { DEMO_RESTAURANT_ID } from "@/lib/constants";
 import type { AdminStats } from "@/lib/demo-data";
-import type { Category, MenuItem, Table, OrderWithRelations } from "@/types/database";
+import type { Category, MenuItem, Table, OrderStatus, OrderWithRelations } from "@/types/database";
 
 const R = DEMO_RESTAURANT_ID;
 
@@ -228,6 +229,18 @@ export function useAdminOrders(restaurantId = R) {
       apiFetch<{ orders: OrderWithRelations[] }>(
         `/api/orders?restaurantId=${encodeURIComponent(restaurantId)}`,
       ).then((r) => r.orders),
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useUpdateOrderStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, status }: { orderId: string; status: OrderStatus }) =>
+      updateOrderStatus(orderId, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.orders(R) });
+      qc.invalidateQueries({ queryKey: adminKeys.stats(R) });
+    },
   });
 }

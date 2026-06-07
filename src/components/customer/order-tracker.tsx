@@ -152,7 +152,8 @@ function useRealtimeOrders() {
   const updateTrackedStatus = useCartStore((s) => s.updateTrackedStatus);
   const removeTrackedOrder = useCartStore((s) => s.removeTrackedOrder);
   const clearCart = useCartStore((s) => s.clearCart);
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClientIfConfigured>["channel"]> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const channelRef = useRef<any>(null);
 
   // Only track orders belonging to the current table session
   const activeOrders = currentTableId
@@ -235,7 +236,11 @@ export function OrderTracker() {
     visibleOrders.length > 0 &&
     visibleOrders.every((o) => o.status === "paid" || o.status === "cancelled");
 
-  // Auto-reset after 10 s when all orders are paid (fires even if drawer is closed)
+  // Auto-reset after 10 s when all orders are paid.
+  // resetSession / router / tableId are intentionally NOT in the dep array —
+  // they are captured fresh inside the timeout callback, which runs only once
+  // (guarded by allPaidRef).  Only reacting to allPaid prevents the cleanup
+  // from cancelling the timer on every render (which was the previous bug).
   useEffect(() => {
     if (!allPaid || allPaidRef.current) return;
     allPaidRef.current = true;
@@ -245,7 +250,8 @@ export function OrderTracker() {
       router.replace(dest);
     }, 10_000);
     return () => clearTimeout(timer);
-  }, [allPaid, resetSession, router, tableId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPaid]);
 
   if (visibleOrders.length === 0) return null;
 

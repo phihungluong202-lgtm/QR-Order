@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClientIfConfigured } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/types/database";
@@ -32,7 +33,9 @@ function ConfettiBurst() {
     const W = window.innerWidth, H = window.innerHeight;
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.width = `${W}px`; canvas.style.height = `${H}px`;
-    const ctx = canvas.getContext("2d")!;
+    const ctxOrNull = canvas.getContext("2d");
+    if (!ctxOrNull) return; // guard: some mobile browsers may return null
+    const ctx = ctxOrNull; // narrowed to non-null for closures below
     ctx.scale(dpr, dpr);
     const COLORS = ["#ff6b35","#ff9e1b","#ffce00","#00c851","#33b5e5","#aa66cc","#ff4444","#ff69b4"];
     type P = { x:number;y:number;vx:number;vy:number;color:string;r:number;spin:number;dSpin:number;rect:boolean;alpha:number };
@@ -139,7 +142,8 @@ function useTableOrders() {
           )
         `)
         .eq("table_id", tableId!)
-        .not("status", "in", '("cancelled")')
+        // Exclude terminal statuses — paid/served belong to past sessions
+        .not("status", "in", '("cancelled","paid","served")')
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(5);
@@ -223,7 +227,14 @@ function useTableOrders() {
 
   const total = fetched.reduce((sum, o) => sum + (o.total ?? 0), 0);
 
-  return { status, allItems, total, loaded, hasOrders: storeOrders.length > 0 || fetched.length > 0 };
+  return {
+    status,
+    allItems,
+    total,
+    loaded,
+    tableId,
+    hasOrders: storeOrders.length > 0 || fetched.length > 0,
+  };
 }
 
 // ─── Sticky status bar ────────────────────────────────────────────────────────
@@ -407,9 +418,33 @@ function NoOrdersState() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function SuccessContent() {
-  const { status, allItems, total, loaded, hasOrders } = useTableOrders();
+  const { status, allItems, total, loaded, tableId, hasOrders } = useTableOrders();
+  const router = useRouter();
+  const clearCart = useCartStore((s) => s.clearCart);
+  const removeTrackedOrder = useCartStore((s) => s.removeTrackedOrder);
+  const allActiveOrders = useCartStore((s) => s.activeOrders);
   const isCancelled = status === "cancelled";
   const isPaid = status === "paid";
+
+  // Auto-reset: when the table is fully paid, silently clear the session
+  // and redirect to a fresh menu so the next customer starts clean.
+  // Mirrors the same logic in OrderTracker but works even when the banner
+  // is not visible (e.g. customer is already on this page).
+  const resetFiredRef = useRef(false);
+  useEffect(() => {
+    // Fire once when isPaid becomes true and there are tracked orders to clear
+    if (!isPaid || !hasOrders || resetFiredRef.current) return;
+    resetFiredRef.current = true;
+    const timer = setTimeout(() => {
+      allActiveOrders
+        .filter((o) => o.tableId === tableId)
+        .forEach((o) => removeTrackedOrder(o.id));
+      clearCart(true); // clears lines, tableOrderId, submittedOrderId
+      router.replace(tableId ? `/table/${tableId}` : "/menu");
+    }, 10_000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPaid]);
 
   return (
     <div className="flex min-h-dvh flex-col">

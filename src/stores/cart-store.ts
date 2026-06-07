@@ -57,6 +57,8 @@ interface CartStore {
   addTrackedOrder: (order: TrackedOrder) => void;
   updateTrackedStatus: (orderId: string, status: OrderStatus) => void;
   removeTrackedOrder: (orderId: string) => void;
+  /** Merge server-fetched orders into activeOrders (restores state after reopen) */
+  syncServerOrders: (orders: TrackedOrder[]) => void;
 }
 
 function generateKey() {
@@ -76,21 +78,22 @@ export const useCartStore = create<CartStore>()(
 
       setSession: (tableId, restaurantId) =>
         set((state) => {
-          const isSameTable = state.tableId === tableId;
-          if (isSameTable) {
-            // Same table: only update restaurantId if needed
-            return { restaurantId };
+          // Only do a full reset when there was a PREVIOUS table that is DIFFERENT
+          // (state.tableId === null means fresh/initial state — preserve whatever localStorage loaded)
+          const switchedTable = state.tableId !== null && state.tableId !== tableId;
+          if (switchedTable) {
+            return {
+              tableId,
+              restaurantId,
+              lines: [],
+              tableOrderId: null,
+              submittedOrderId: null,
+              idempotencyKey: generateKey(),
+              activeOrders: [],
+            };
           }
-          // Different table → full reset: clear cart, orders, session
-          return {
-            tableId,
-            restaurantId,
-            lines: [],
-            tableOrderId: null,
-            submittedOrderId: null,
-            idempotencyKey: generateKey(),
-            activeOrders: [],
-          };
+          // Same table OR initial load — just update session IDs, keep everything else
+          return { tableId, restaurantId };
         }),
 
       setTableOrderId: (orderId) => set({ tableOrderId: orderId }),
@@ -177,6 +180,28 @@ export const useCartStore = create<CartStore>()(
         set((state) => ({
           activeOrders: state.activeOrders.filter((o) => o.id !== orderId),
         })),
+
+      syncServerOrders: (orders) =>
+        set((state) => {
+          // Merge: update status for existing, add missing ones
+          const merged = [...state.activeOrders];
+          for (const serverOrder of orders) {
+            const idx = merged.findIndex((o) => o.id === serverOrder.id);
+            if (idx >= 0) {
+              merged[idx] = { ...merged[idx], status: serverOrder.status, total: serverOrder.total ?? merged[idx].total };
+            } else {
+              merged.unshift(serverOrder);
+            }
+          }
+          // Update tableOrderId to the most recent appendable server order if not already set
+          const latestOpen = orders.find((o) =>
+            ["pending", "confirmed", "preparing"].includes(o.status),
+          );
+          return {
+            activeOrders: merged.slice(0, 10),
+            tableOrderId: state.tableOrderId ?? latestOpen?.id ?? null,
+          };
+        }),
     }),
     { name: "qr-order-cart" },
   ),

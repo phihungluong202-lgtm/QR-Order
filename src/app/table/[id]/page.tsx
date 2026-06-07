@@ -9,6 +9,9 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { env } from "@/lib/env";
 import { useCartStore } from "@/stores/cart-store";
+import { createClientIfConfigured } from "@/lib/supabase/client";
+import type { TrackedOrder } from "@/stores/cart-store";
+import type { OrderStatus } from "@/types/database";
 import Link from "next/link";
 
 interface TableSession {
@@ -22,10 +25,10 @@ function TableMenuPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const tableId = params.id as string;
-  const restaurantSlug =
-    searchParams.get("restaurant") ?? env.restaurantSlug;
+  const restaurantSlug = searchParams.get("restaurant") ?? env.restaurantSlug;
 
   const setSession = useCartStore((s) => s.setSession);
+  const syncServerOrders = useCartStore((s) => s.syncServerOrders);
   const [session, setTableSession] = useState<TableSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +56,32 @@ function TableMenuPageContent() {
             label: data.label,
             restaurantSlug: data.restaurantSlug ?? restaurantSlug,
           });
+
+          // ── Restore orders from server after reopen ────────────────────
+          // Fetch active orders for this table directly from Supabase.
+          // This ensures the customer sees their orders even after closing the browser.
+          const supabase = createClientIfConfigured();
+          if (supabase && !cancelled) {
+            const { data: serverOrders } = await supabase
+              .from("orders")
+              .select("id, status, total, created_at")
+              .eq("table_id", data.tableId)
+              .not("status", "in", '("cancelled")')
+              .is("deleted_at", null)
+              .order("created_at", { ascending: false })
+              .limit(10);
+
+            if (serverOrders && serverOrders.length > 0 && !cancelled) {
+              const tracked: TrackedOrder[] = serverOrders.map((o) => ({
+                id: o.id,
+                status: o.status as OrderStatus,
+                tableId: data.tableId as string,
+                total: o.total ?? undefined,
+                createdAt: o.created_at,
+              }));
+              syncServerOrders(tracked);
+            }
+          }
         }
       } catch {
         if (!cancelled) setError("Could not load table");
@@ -65,7 +94,7 @@ function TableMenuPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [tableId, restaurantSlug, setSession]);
+  }, [tableId, restaurantSlug, setSession, syncServerOrders]);
 
   if (loading) {
     return (

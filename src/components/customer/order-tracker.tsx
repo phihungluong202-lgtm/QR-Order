@@ -184,28 +184,31 @@ function useRealtimeOrders() {
 
   useEffect(() => {
     const client = createClientIfConfigured();
-    if (!client) return;
-
-    const ids = [...new Set(activeOrders.map((o) => o.id))];
-    if (ids.length === 0) return;
+    if (!client || !currentTableId) return;
 
     if (channelRef.current) {
       client.removeChannel(channelRef.current);
+      channelRef.current = null;
     }
 
+    const trackedIds = new Set(activeOrders.map((o) => o.id));
+    if (trackedIds.size === 0) return;
+
+    // Subscribe to all order updates for this table (no id-in filter — more reliable)
+    // then filter client-side to the orders we actually track.
     const channel = client
-      .channel("order-tracker")
+      .channel(`order-tracker-${currentTableId}`)
       .on(
         "postgres_changes",
         {
           event: "UPDATE",
           schema: "public",
           table: "orders",
-          filter: `id=in.(${ids.join(",")})`,
+          filter: `table_id=eq.${currentTableId}`,
         },
         (payload) => {
           const updated = payload.new as { id: string; status: OrderStatus };
-          if (updated?.id && updated?.status) {
+          if (updated?.id && updated?.status && trackedIds.has(updated.id)) {
             updateTrackedStatus(updated.id, updated.status);
           }
         },
@@ -216,9 +219,11 @@ function useRealtimeOrders() {
 
     return () => {
       client.removeChannel(channel);
+      channelRef.current = null;
     };
+    // Re-subscribe when the set of tracked order IDs changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrders.map((o) => o.id + o.status).join(",")]);
+  }, [currentTableId, activeOrders.map((o) => o.id).sort().join(",")]);
 
   // Reset handler for after the 2-min countdown
   function resetSession() {
@@ -235,16 +240,11 @@ export function OrderTracker() {
   const [open, setOpen] = useState(false);
   const { activeOrders, removeTrackedOrder, resetSession } = useRealtimeOrders();
 
-  // Orders to show in the panel
-  const visibleOrders = activeOrders.filter((o) => {
-    if (ACTIVE_ORDER_STATUSES.includes(o.status)) return true;
-    if (o.status === "paid") return true; // always show paid
-    if (o.status === "served") {
-      const age = Date.now() - new Date(o.createdAt).getTime();
-      return age < 10 * 60 * 1000;
-    }
-    return false;
-  });
+  // Show all orders for the current table session except cancelled
+  // (served/paid orders stay visible until the next table scan resets the session)
+  const visibleOrders = activeOrders.filter(
+    (o) => o.status !== "cancelled",
+  );
 
   // Are ALL visible (non-cancelled) orders paid?
   const allPaid =

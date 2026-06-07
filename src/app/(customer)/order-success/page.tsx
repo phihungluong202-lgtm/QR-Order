@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { createClientIfConfigured } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/types/database";
 import { cn, formatCurrency } from "@/lib/utils";
+import { useCartStore } from "@/stores/cart-store";
 
 // ─── Canvas confetti burst ────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ const STATUS_STEPS: {
   { status: "paid",      Icon: CreditCard,      label: "Paid ✓",        desc: "Payment received — thank you! 🙏" },
 ];
 
-const STATUS_ORDER: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "served"];
+const STATUS_ORDER: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "served", "paid"];
 
 function statusIndex(s: OrderStatus) {
   return STATUS_ORDER.indexOf(s);
@@ -147,6 +148,7 @@ function useLiveOrder(orderId: string | null) {
   const [items, setItems] = useState<OrderItemLine[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loaded, setLoaded] = useState(false);
+  const updateTrackedStatus = useCartStore((s) => s.updateTrackedStatus);
 
   useEffect(() => {
     if (!orderId || orderId === "unknown") { setLoaded(true); return; }
@@ -175,8 +177,11 @@ function useLiveOrder(orderId: string | null) {
         .single();
 
       if (data) {
-        setStatus(data.status as OrderStatus);
+        const latestStatus = data.status as OrderStatus;
+        setStatus(latestStatus);
         setTotal(data.total ?? 0);
+        // Keep the global order-tracker in sync too
+        if (orderId) updateTrackedStatus(orderId, latestStatus);
         const lines: OrderItemLine[] = (data.order_items ?? []).map((oi: {
           id: string;
           quantity: number;
@@ -198,7 +203,7 @@ function useLiveOrder(orderId: string | null) {
 
     fetchOrder();
 
-    // Realtime for status updates
+    // Realtime subscription for instant status updates
     const channel = client
       .channel(`order-success-${orderId}`)
       .on(
@@ -206,12 +211,22 @@ function useLiveOrder(orderId: string | null) {
         { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${orderId}` },
         (payload) => {
           const newStatus = (payload.new as { status: OrderStatus }).status;
-          if (newStatus) setStatus(newStatus);
+          if (newStatus) {
+            setStatus(newStatus);
+            // Sync to global tracker store as well
+            if (orderId) updateTrackedStatus(orderId, newStatus);
+          }
         },
       )
       .subscribe();
 
-    return () => { client.removeChannel(channel); };
+    // Polling fallback: refresh status every 10 s in case realtime is interrupted
+    const poll = setInterval(() => { fetchOrder(); }, 10_000);
+
+    return () => {
+      client.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [orderId]);
 
   return { status, items, total, loaded };

@@ -3,19 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, ShoppingBag, Receipt } from "lucide-react";
+import { Home, ShoppingBag, Receipt, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCartStore } from "@/stores/cart-store";
-
-const navItems = [
-  { href: "/menu", label: "Menu", icon: Home },
-  { href: "/cart", label: "Cart", icon: ShoppingBag },
-  { href: "/checkout", label: "Checkout", icon: Receipt },
-] as const;
+import { useActiveOrderCount, useHasReadyOrder } from "@/components/customer/order-tracker";
 
 export function CustomerBottomNav() {
   const pathname = usePathname();
   const itemCount = useCartStore((s) => s.itemCount());
+  const activeOrderCount = useActiveOrderCount();
+  const hasReadyOrder = useHasReadyOrder();
+
+  const navItems = [
+    { href: "/menu", label: "Menu", icon: Home, badge: 0 },
+    { href: "/cart", label: "Cart", icon: ShoppingBag, badge: itemCount },
+    { href: "/order-success", label: "Orders", icon: ClipboardList, badge: activeOrderCount, pulse: hasReadyOrder },
+    { href: "/checkout", label: "Checkout", icon: Receipt, badge: 0 },
+  ] as const;
 
   return (
     <nav
@@ -23,12 +27,13 @@ export function CustomerBottomNav() {
       aria-label="Main navigation"
     >
       <div className="mx-auto flex h-16 max-w-lg items-center justify-around">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, label, icon: Icon, badge, ...rest }) => {
+          const pulse = "pulse" in rest ? rest.pulse : false;
           const active =
             pathname.startsWith(href) ||
             (href === "/menu" &&
               (pathname.startsWith("/table") || pathname.startsWith("/t/")));
-          const showBadge = href === "/cart" && itemCount > 0;
+          const showBadge = badge > 0;
 
           return (
             <Link
@@ -59,20 +64,26 @@ export function CustomerBottomNav() {
                   className={cn(
                     "h-[22px] w-[22px] transition-[stroke-width]",
                     active ? "stroke-[2.2px]" : "stroke-[1.8px]",
+                    pulse && !active && "text-emerald-500",
                   )}
                 />
 
-                {/* Cart badge */}
+                {/* Badge */}
                 <AnimatePresence>
                   {showBadge && (
                     <motion.span
-                      key={itemCount}
+                      key={badge}
                       initial={{ scale: 0.5, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       exit={{ scale: 0.5, opacity: 0 }}
-                      className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-black text-primary-foreground shadow-sm"
+                      className={cn(
+                        "absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-black shadow-sm",
+                        pulse
+                          ? "animate-bounce bg-emerald-500 text-white"
+                          : "bg-primary text-primary-foreground",
+                      )}
                     >
-                      {itemCount > 9 ? "9+" : itemCount}
+                      {badge > 9 ? "9+" : badge}
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -83,6 +94,7 @@ export function CustomerBottomNav() {
                 className={cn(
                   "text-[11px] font-semibold leading-none tracking-tight transition-colors",
                   active ? "text-primary" : "text-muted-foreground/70",
+                  pulse && !active && "text-emerald-500",
                 )}
               >
                 {label}

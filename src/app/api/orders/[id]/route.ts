@@ -3,6 +3,36 @@ import { updateDemoOrder } from "@/lib/demo-data";
 import { getServerServices } from "@/services";
 import type { OrderStatus } from "@/types/database";
 
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const { createApiClient } = await import("@/lib/supabase/api");
+  const client = createApiClient();
+
+  if (client) {
+    try {
+      const { data, error } = await client
+        .from("orders")
+        .select("id, status, total, created_at, table_id")
+        .eq("id", id)
+        .is("deleted_at", null)
+        .single();
+
+      if (error || !data) {
+        return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      }
+      return NextResponse.json({ order: data });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Fetch failed";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

@@ -1,7 +1,24 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartLine } from "@/types/cart";
-import type { MenuItem } from "@/types/database";
+import type { MenuItem, OrderStatus } from "@/types/database";
+
+export interface TrackedOrder {
+  id: string;
+  status: OrderStatus;
+  tableId: string;
+  tableLabel?: string;
+  total?: number;
+  createdAt: string;
+}
+
+/** Statuses that mean the order is still active / worth tracking */
+export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  "pending",
+  "confirmed",
+  "preparing",
+  "ready",
+];
 
 interface CartStore {
   tableId: string | null;
@@ -11,6 +28,9 @@ interface CartStore {
   submittedOrderId: string | null;
   /** Stable key sent with POST /api/orders to prevent duplicate writes */
   idempotencyKey: string;
+  /** Orders being tracked across navigation */
+  activeOrders: TrackedOrder[];
+
   setSession: (tableId: string, restaurantId: string) => void;
   addItem: (
     item: MenuItem,
@@ -23,6 +43,10 @@ interface CartStore {
   setSubmittedOrderId: (orderId: string) => void;
   itemCount: () => number;
   subtotal: () => number;
+
+  addTrackedOrder: (order: TrackedOrder) => void;
+  updateTrackedStatus: (orderId: string, status: OrderStatus) => void;
+  removeTrackedOrder: (orderId: string) => void;
 }
 
 function generateKey() {
@@ -37,6 +61,7 @@ export const useCartStore = create<CartStore>()(
       lines: [],
       submittedOrderId: null,
       idempotencyKey: generateKey(),
+      activeOrders: [],
 
       setSession: (tableId, restaurantId) =>
         set({ tableId, restaurantId }),
@@ -98,6 +123,26 @@ export const useCartStore = create<CartStore>()(
 
       subtotal: () =>
         get().lines.reduce((sum, l) => sum + l.menuItem.price * l.quantity, 0),
+
+      addTrackedOrder: (order) =>
+        set((state) => ({
+          activeOrders: [
+            order,
+            ...state.activeOrders.filter((o) => o.id !== order.id),
+          ].slice(0, 10),
+        })),
+
+      updateTrackedStatus: (orderId, status) =>
+        set((state) => ({
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId ? { ...o, status } : o,
+          ),
+        })),
+
+      removeTrackedOrder: (orderId) =>
+        set((state) => ({
+          activeOrders: state.activeOrders.filter((o) => o.id !== orderId),
+        })),
     }),
     { name: "qr-order-cart" },
   ),

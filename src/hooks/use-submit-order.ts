@@ -27,6 +27,7 @@ export function useSubmitOrder() {
   const idempotencyKey = useCartStore((s) => s.idempotencyKey);
   const clearCart = useCartStore((s) => s.clearCart);
   const setSubmittedOrderId = useCartStore((s) => s.setSubmittedOrderId);
+  const addTrackedOrder = useCartStore((s) => s.addTrackedOrder);
 
   /** Prevents double-fire even before `isPending` flips */
   const submittingRef = useRef(false);
@@ -52,8 +53,18 @@ export function useSubmitOrder() {
       submittingRef.current = true;
     },
     onSuccess: (data) => {
-      const orderId = data.order?.id ?? "unknown";
+      const order = data.order;
+      const orderId = order?.id ?? "unknown";
       setSubmittedOrderId(orderId);
+      if (order && tableId) {
+        addTrackedOrder({
+          id: order.id,
+          status: order.status ?? "pending",
+          tableId,
+          total: order.total ?? undefined,
+          createdAt: order.created_at ?? new Date().toISOString(),
+        });
+      }
       clearCart();
       router.push(`/order-success?orderId=${orderId}`);
     },

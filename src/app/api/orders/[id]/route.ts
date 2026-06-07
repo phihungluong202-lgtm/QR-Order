@@ -33,6 +33,32 @@ export async function GET(
   return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
 }
 
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const body = await request.json();
+  const { items } = body as { items: { menuItemId: string; quantity: number; notes?: string }[] };
+
+  if (!items?.length) {
+    return NextResponse.json({ error: "Items required" }, { status: 400 });
+  }
+
+  const services = getServerServices();
+  if (!services) {
+    return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
+  }
+
+  try {
+    const order = await services.orders.addItems(id, items);
+    return NextResponse.json({ order });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Failed to add items";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

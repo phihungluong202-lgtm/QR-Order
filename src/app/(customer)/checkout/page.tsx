@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Loader2,
+  PlusCircle,
   Receipt,
   ScanLine,
   Utensils,
@@ -65,7 +66,7 @@ export default function CheckoutPage() {
   const subtotal = useCartStore((s) => s.subtotal());
 
   const [orderNotes, setOrderNotes] = useState("");
-  const { submit, isPending, isError, error, canSubmit } = useSubmitOrder();
+  const { submit, isPending, isError, error, canSubmit, isAppending, existingOrderId } = useSubmitOrder();
 
   if (lines.length === 0) {
     return (
@@ -90,13 +91,41 @@ export default function CheckoutPage() {
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Checkout</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">
+            {isAppending ? "Add to order" : "Checkout"}
+          </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {tableId ? "Review your order" : "Link your table first"}
+            {tableId
+              ? isAppending
+                ? `Adding to order #${existingOrderId?.slice(0, 8).toUpperCase()}`
+                : "Review your order"
+              : "Link your table first"}
           </p>
         </div>
         <CheckoutSteps step={1} />
       </div>
+
+      {/* ── Appending banner ─────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {isAppending && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/40 dark:bg-blue-900/20"
+          >
+            <PlusCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+            <div>
+              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                Adding to your existing order
+              </p>
+              <p className="mt-0.5 text-xs text-blue-600/80 dark:text-blue-400/80">
+                These items will be added to order #{existingOrderId?.slice(0, 8).toUpperCase()}. The kitchen will receive the update.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -128,7 +157,9 @@ export default function CheckoutPage() {
         <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           <div className="flex items-center gap-2 border-b px-4 py-3">
             <Receipt className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Your order</h2>
+            <h2 className="text-sm font-semibold">
+              {isAppending ? "New items to add" : "Your order"}
+            </h2>
           </div>
 
           <ul className="divide-y">
@@ -195,7 +226,8 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* ── Special requests ─────────────────────────────────────────── */}
+        {/* ── Special requests (only for new orders) ───────────────────── */}
+        {!isAppending && (
         <div className="rounded-2xl border bg-card p-4 shadow-sm">
           <label htmlFor="order-notes" className="mb-2 block text-sm font-semibold">
             Special requests
@@ -211,6 +243,7 @@ export default function CheckoutPage() {
             disabled={isPending}
           />
         </div>
+        )}
 
         {/* ── Back link ────────────────────────────────────────────────── */}
         <Button variant="ghost" size="sm" className="text-muted-foreground" asChild>
@@ -245,7 +278,12 @@ export default function CheckoutPage() {
           {isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Placing order…
+              {isAppending ? "Adding items…" : "Placing order…"}
+            </>
+          ) : isAppending ? (
+            <>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              {`Add to order · ${formatCurrency(subtotal)}`}
             </>
           ) : (
             `Place order · ${formatCurrency(subtotal)}`

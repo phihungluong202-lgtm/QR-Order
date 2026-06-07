@@ -101,6 +101,60 @@ export class OrdersService {
     return order;
   }
 
+  async addItems(orderId: string, items: CreateOrderLineInput[]): Promise<Order> {
+    // Fetch current order to verify it exists and get restaurant context
+    const { data: order, error: orderError } = await this.client
+      .from("orders")
+      .select("id, total")
+      .eq("id", orderId)
+      .is("deleted_at", null)
+      .single();
+    assertNoError(orderError);
+    if (!order) throw new Error("Order not found");
+
+    // Resolve prices and insert new items
+    const newItems = await Promise.all(
+      items.map(async (line) => {
+        const { data: menuItem, error } = await this.client
+          .from("menu_items")
+          .select("price")
+          .eq("id", line.menuItemId)
+          .single();
+        assertNoError(error);
+        const price = menuItem?.price ?? 0;
+        return {
+          order_id: orderId,
+          menu_item_id: line.menuItemId,
+          quantity: line.quantity,
+          unit_price: price,
+          notes: line.notes ?? null,
+          extra_total: price * line.quantity,
+        };
+      }),
+    );
+
+    const addedTotal = newItems.reduce((s, i) => s + i.extra_total, 0);
+
+    const { error: insertError } = await this.client
+      .from("order_items")
+      .insert(newItems.map(({ extra_total: _, ...i }) => i));
+    assertNoError(insertError);
+
+    // Update order total
+    const { data: updated, error: updateError } = await this.client
+      .from("orders")
+      .update({
+        total: (order.total ?? 0) + addedTotal,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .select()
+      .single();
+    assertNoError(updateError);
+    if (!updated) throw new Error("Failed to update order total");
+    return updated;
+  }
+
   async updateStatus(orderId: string, status: OrderStatus): Promise<Order> {
     const { data, error } = await this.client
       .from("orders")

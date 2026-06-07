@@ -20,6 +20,13 @@ export const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   "ready",
 ];
 
+/** Statuses where new items can still be appended to the order */
+export const APPENDABLE_ORDER_STATUSES: OrderStatus[] = [
+  "pending",
+  "confirmed",
+  "preparing",
+];
+
 interface CartStore {
   tableId: string | null;
   restaurantId: string | null;
@@ -30,8 +37,11 @@ interface CartStore {
   idempotencyKey: string;
   /** Orders being tracked across navigation */
   activeOrders: TrackedOrder[];
+  /** The current open order for this table session (for appending items) */
+  tableOrderId: string | null;
 
   setSession: (tableId: string, restaurantId: string) => void;
+  setTableOrderId: (orderId: string | null) => void;
   addItem: (
     item: MenuItem,
     options?: { quantity?: number; notes?: string },
@@ -39,7 +49,7 @@ interface CartStore {
   removeItem: (menuItemId: string) => void;
   updateQuantity: (menuItemId: string, quantity: number) => void;
   updateLineNotes: (menuItemId: string, notes: string) => void;
-  clearCart: () => void;
+  clearCart: (clearOrder?: boolean) => void;
   setSubmittedOrderId: (orderId: string) => void;
   itemCount: () => number;
   subtotal: () => number;
@@ -62,9 +72,17 @@ export const useCartStore = create<CartStore>()(
       submittedOrderId: null,
       idempotencyKey: generateKey(),
       activeOrders: [],
+      tableOrderId: null,
 
       setSession: (tableId, restaurantId) =>
-        set({ tableId, restaurantId }),
+        set((state) => ({
+          tableId,
+          restaurantId,
+          // Reset the running order if switching to a different table
+          tableOrderId: state.tableId !== tableId ? null : state.tableOrderId,
+        })),
+
+      setTableOrderId: (orderId) => set({ tableOrderId: orderId }),
 
       addItem: (item, options) => {
         const quantity = options?.quantity ?? 1;
@@ -114,8 +132,13 @@ export const useCartStore = create<CartStore>()(
           };
         }),
 
-      clearCart: () =>
-        set({ lines: [], submittedOrderId: null, idempotencyKey: generateKey() }),
+      clearCart: (clearOrder = false) =>
+        set((state) => ({
+          lines: [],
+          submittedOrderId: null,
+          idempotencyKey: generateKey(),
+          tableOrderId: clearOrder ? null : state.tableOrderId,
+        })),
 
       setSubmittedOrderId: (orderId) => set({ submittedOrderId: orderId }),
 

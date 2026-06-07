@@ -218,7 +218,9 @@ export class AdminService {
   }
 
   async createTable(input: CreateTableInput): Promise<Table> {
-    const qrCode = `table-${input.label.toLowerCase().replace(/\s+/g, "-")}`;
+    // Slugify label; avoid double "table-" prefix (e.g. label "Table 3" → "table-3", not "table-table-3")
+    const slug = input.label.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const qrCode = slug.startsWith("table") ? slug : `table-${slug}`;
     const { data, error } = await this.client
       .from("tables")
       .insert({

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, ScanLine } from "lucide-react";
 import { useCartStore } from "@/stores/cart-store";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function TableEntryPage() {
   const params = useParams();
@@ -14,6 +16,8 @@ export default function TableEntryPage() {
   const restaurantSlug = params.restaurant as string;
   const tableQr = params.table as string;
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     async function resolveTable() {
       try {
@@ -21,22 +25,44 @@ export default function TableEntryPage() {
           `/api/tables/resolve?restaurant=${encodeURIComponent(restaurantSlug)}&qr=${encodeURIComponent(tableQr)}`,
         );
         const data = await res.json();
-        if (data.tableId && data.restaurantId) {
+
+        if (res.ok && data.tableId && data.restaurantId) {
           setSession(data.tableId, data.restaurantId);
           router.replace(
             `/table/${encodeURIComponent(data.tableId)}?restaurant=${encodeURIComponent(restaurantSlug)}`,
           );
           return;
         }
+
+        // Table not found in database
+        setError(data.error ?? "Table not found. Please scan the QR code again.");
       } catch {
-        setSession(`table-${tableQr}`, `restaurant-${restaurantSlug}`);
+        setError("Could not connect to server. Please check your connection.");
       }
-      router.replace(
-        `/table/${encodeURIComponent(tableQr)}?restaurant=${encodeURIComponent(restaurantSlug)}`,
-      );
     }
     resolveTable();
   }, [restaurantSlug, tableQr, setSession, router]);
+
+  if (error) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+            <ScanLine className="h-8 w-8 text-destructive" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold">Table not found</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground max-w-xs">
+              {error}
+            </p>
+          </div>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/menu">Browse demo menu</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6">

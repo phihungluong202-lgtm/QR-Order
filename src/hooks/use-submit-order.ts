@@ -39,10 +39,13 @@ export function useSubmitOrder() {
 
   const submittingRef = useRef(false);
 
-  /** The existing running order (if any and still appendable) */
+  /** The existing running order (if any, still appendable, and belongs to THIS table) */
   const existingOrder = tableOrderId
     ? activeOrders.find(
-        (o) => o.id === tableOrderId && APPENDABLE_ORDER_STATUSES.includes(o.status),
+        (o) =>
+          o.id === tableOrderId &&
+          o.tableId === tableId &&
+          APPENDABLE_ORDER_STATUSES.includes(o.status),
       )
     : null;
 

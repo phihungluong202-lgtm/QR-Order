@@ -75,12 +75,23 @@ export const useCartStore = create<CartStore>()(
       tableOrderId: null,
 
       setSession: (tableId, restaurantId) =>
-        set((state) => ({
-          tableId,
-          restaurantId,
-          // Reset the running order if switching to a different table
-          tableOrderId: state.tableId !== tableId ? null : state.tableOrderId,
-        })),
+        set((state) => {
+          const isSameTable = state.tableId === tableId;
+          if (isSameTable) {
+            // Same table: only update restaurantId if needed
+            return { restaurantId };
+          }
+          // Different table → full reset: clear cart, orders, session
+          return {
+            tableId,
+            restaurantId,
+            lines: [],
+            tableOrderId: null,
+            submittedOrderId: null,
+            idempotencyKey: generateKey(),
+            activeOrders: [],
+          };
+        }),
 
       setTableOrderId: (orderId) => set({ tableOrderId: orderId }),
 

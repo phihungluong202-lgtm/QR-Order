@@ -170,23 +170,17 @@ function PaidSessionBanner({ onReset }: { onReset: () => void }) {
 // ─── Realtime subscription hook ───────────────────────────────────────────────
 
 function useRealtimeOrders() {
-  const activeOrders = useCartStore((s) => s.activeOrders);
-  const tableOrderId = useCartStore((s) => s.tableOrderId);
+  const currentTableId = useCartStore((s) => s.tableId);
+  const allActiveOrders = useCartStore((s) => s.activeOrders);
   const updateTrackedStatus = useCartStore((s) => s.updateTrackedStatus);
   const removeTrackedOrder = useCartStore((s) => s.removeTrackedOrder);
   const clearCart = useCartStore((s) => s.clearCart);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClientIfConfigured>["channel"]> | null>(null);
 
-  // IDs to subscribe: active orders + tableOrderId's order (even if "paid" or "served")
-  const trackingIds = [
-    ...activeOrders
-      .filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status))
-      .map((o) => o.id),
-    // also keep tracking the current table's order even after it becomes paid/served
-    ...(tableOrderId && !activeOrders.find((o) => o.id === tableOrderId && ACTIVE_ORDER_STATUSES.includes(o.status))
-      ? activeOrders.filter((o) => o.id === tableOrderId).map((o) => o.id)
-      : []),
-  ];
+  // Only track orders belonging to the current table session
+  const activeOrders = currentTableId
+    ? allActiveOrders.filter((o) => o.tableId === currentTableId)
+    : [];
 
   useEffect(() => {
     const client = createClientIfConfigured();
@@ -358,13 +352,19 @@ export function OrderTracker() {
 // ─── Count badge for nav ──────────────────────────────────────────────────────
 
 export function useActiveOrderCount() {
-  return useCartStore((s) =>
-    s.activeOrders.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status) || o.status === "paid").length,
-  );
+  return useCartStore((s) => {
+    const tid = s.tableId;
+    return s.activeOrders.filter(
+      (o) => o.tableId === tid && (ACTIVE_ORDER_STATUSES.includes(o.status) || o.status === "paid"),
+    ).length;
+  });
 }
 
 export function useHasReadyOrder() {
-  return useCartStore((s) =>
-    s.activeOrders.some((o) => o.status === "ready" || o.status === "paid"),
-  );
+  return useCartStore((s) => {
+    const tid = s.tableId;
+    return s.activeOrders.some(
+      (o) => o.tableId === tid && (o.status === "ready" || o.status === "paid"),
+    );
+  });
 }

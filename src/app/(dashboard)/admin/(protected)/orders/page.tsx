@@ -17,7 +17,7 @@ import {
   Banknote,
   ReceiptText,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -279,6 +279,47 @@ function OrderCard({ order, index }: { order: OrderWithRelations; index: number 
   );
 }
 
+// ─── Admin-side countdown after payment ──────────────────────────────────────
+
+const RESET_DELAY = 10; // seconds until table resets on customer side
+
+function PaymentCountdown({ seconds, onCancel }: { seconds: number; onCancel: () => void }) {
+  const [remaining, setRemaining] = useState(seconds);
+
+  useEffect(() => {
+    if (remaining <= 0) return;
+    const t = setInterval(() => setRemaining((r) => r - 1), 1000);
+    return () => clearInterval(t);
+  }, [remaining]);
+
+  const pct = ((seconds - remaining) / seconds) * 100;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-semibold text-teal-700 dark:text-teal-400">
+          ✓ Paid — table resets in {remaining}s
+        </span>
+        <button
+          onClick={onCancel}
+          className="rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+        >
+          Undo
+        </button>
+      </div>
+      {/* Progress bar */}
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <motion.div
+          className="h-full rounded-full bg-teal-500"
+          initial={{ width: "0%" }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.4 }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Table payment card ───────────────────────────────────────────────────────
 
 interface TableGroup {
@@ -291,8 +332,8 @@ interface TableGroup {
 function TablePaymentCard({ group }: { group: TableGroup }) {
   const { toast } = useToast();
   const { mutate: payTable, isPending } = usePayTable();
-  const [paid, setPaid] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  // "idle" → "confirm" → "countdown" → "done"
+  const [phase, setPhase] = useState<"idle" | "confirm" | "countdown" | "done">("idle");
 
   const activeOrders = group.orders.filter((o) => !["cancelled", "paid"].includes(o.status));
   const itemCount = activeOrders.reduce(
@@ -303,14 +344,14 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
   function handlePay() {
     payTable(group.tableId, {
       onSuccess: (data) => {
-        setPaid(true);
-        setShowConfirm(false);
+        setPhase("countdown");
         toast({
           title: `${tableDisplayName(group.tableLabel)} — Payment received ✓`,
           description: `${data.count} order${data.count > 1 ? "s" : ""} · ${formatCurrency(data.total)}`,
         });
       },
       onError: (err) => {
+        setPhase("idle");
         toast({ title: "Payment failed", description: err.message, variant: "destructive" });
       },
     });
@@ -322,7 +363,7 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
       animate={{ opacity: 1, y: 0 }}
       className={cn(
         "overflow-hidden rounded-2xl border bg-card shadow-sm transition-all",
-        paid && "border-teal-300 bg-teal-50/40 dark:bg-teal-900/10",
+        (phase === "countdown" || phase === "done") && "border-teal-300 bg-teal-50/40 dark:bg-teal-900/10",
       )}
     >
       {/* Table header */}
@@ -330,7 +371,7 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
         <div className="flex items-center gap-3">
           <div className={cn(
             "flex h-10 w-10 items-center justify-center rounded-full text-sm font-black",
-            paid ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40" : "bg-primary/10 text-primary",
+            phase !== "idle" ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40" : "bg-primary/10 text-primary",
           )}>
             {group.tableLabel}
           </div>
@@ -343,7 +384,9 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
         </div>
         <div className="text-right">
           <p className="text-xl font-black tabular-nums">{formatCurrency(group.total)}</p>
-          {paid && <p className="text-xs font-semibold text-teal-600 dark:text-teal-400">✓ Paid</p>}
+          {phase !== "idle" && (
+            <p className="text-xs font-semibold text-teal-600 dark:text-teal-400">✓ Paid</p>
+          )}
         </div>
       </div>
 
@@ -365,39 +408,76 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
         })}
       </div>
 
-      {/* Payment action */}
+      {/* Payment action area */}
       <div className="border-t bg-muted/20 px-5 py-3">
-        {paid ? (
-          <div className="flex items-center gap-2 text-sm font-semibold text-teal-600 dark:text-teal-400">
-            <CheckCircle2 className="h-4 w-4" />
-            Payment received — customer will be notified
-          </div>
-        ) : showConfirm ? (
-          <div className="flex items-center gap-2">
-            <p className="flex-1 text-sm font-medium">
-              Confirm <span className="font-bold">{formatCurrency(group.total)}</span>?
-            </p>
-            <button onClick={() => setShowConfirm(false)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">
-              Cancel
-            </button>
-            <button
-              onClick={handlePay}
-              disabled={isPending}
-              className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60"
+        <AnimatePresence mode="wait">
+          {phase === "idle" && (
+            <motion.button
+              key="collect"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setPhase("confirm")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all"
             >
-              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-              Confirm
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowConfirm(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all"
-          >
-            <Banknote className="h-4 w-4" />
-            Collect Payment · {formatCurrency(group.total)}
-          </button>
-        )}
+              <Banknote className="h-4 w-4" />
+              Collect Payment · {formatCurrency(group.total)}
+            </motion.button>
+          )}
+
+          {phase === "confirm" && (
+            <motion.div
+              key="confirm"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex items-center gap-2"
+            >
+              <p className="flex-1 text-sm font-medium">
+                Confirm <span className="font-bold">{formatCurrency(group.total)}</span>?
+              </p>
+              <button
+                onClick={() => setPhase("idle")}
+                className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePay}
+                disabled={isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60"
+              >
+                {isPending
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <CheckCircle2 className="h-3.5 w-3.5" />}
+                Confirm
+              </button>
+            </motion.div>
+          )}
+
+          {phase === "countdown" && (
+            <motion.div
+              key="countdown"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            >
+              <PaymentCountdown
+                seconds={RESET_DELAY}
+                onCancel={() => {
+                  // Note: payment is already processed; "undo" only clears the admin UI
+                  setPhase("done");
+                  toast({ title: "Countdown dismissed", description: "Table will reset shortly on customer devices." });
+                }}
+              />
+            </motion.div>
+          )}
+
+          {phase === "done" && (
+            <motion.div
+              key="done"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="flex items-center gap-2 text-sm font-semibold text-teal-600 dark:text-teal-400"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Payment received — table reset sent to customer
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );

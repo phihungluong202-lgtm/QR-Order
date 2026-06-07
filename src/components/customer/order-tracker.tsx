@@ -46,26 +46,6 @@ function formatCurrencyVND(amount?: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 }
 
-// ─── Countdown component ──────────────────────────────────────────────────────
-
-function Countdown({ seconds, onComplete }: { seconds: number; onComplete: () => void }) {
-  const [remaining, setRemaining] = useState(seconds);
-
-  useEffect(() => {
-    if (remaining <= 0) { onComplete(); return; }
-    const id = setInterval(() => setRemaining((s) => s - 1), 1000);
-    return () => clearInterval(id);
-  }, [remaining, onComplete]);
-
-  const m = Math.floor(remaining / 60);
-  const s = remaining % 60;
-  return (
-    <span className="font-mono font-bold">
-      {m}:{String(s).padStart(2, "0")}
-    </span>
-  );
-}
-
 // ─── Single order card ────────────────────────────────────────────────────────
 
 function OrderCard({ order, onDismiss }: { order: TrackedOrder; onDismiss: () => void }) {
@@ -146,7 +126,7 @@ function OrderCard({ order, onDismiss }: { order: TrackedOrder; onDismiss: () =>
 
 // ─── Paid session banner (shown when ALL orders are paid) ─────────────────────
 
-function PaidSessionBanner({ onReset }: { onReset: () => void }) {
+function PaidSessionBanner() {
   return (
     <div className="rounded-2xl border border-teal-300 bg-teal-50 p-4 dark:bg-teal-900/20">
       <div className="flex items-center gap-3">
@@ -154,13 +134,9 @@ function PaidSessionBanner({ onReset }: { onReset: () => void }) {
           <CreditCard className="h-5 w-5 text-teal-600" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-bold text-teal-700 dark:text-teal-300">Payment confirmed!</p>
+          <p className="text-sm font-bold text-teal-700 dark:text-teal-300">Payment confirmed! 🙏</p>
           <p className="mt-0.5 text-xs text-teal-600/80 dark:text-teal-400/80">
-            Session resets in{" "}
-            <Countdown
-              seconds={10}
-              onComplete={onReset}
-            />
+            Thank you for dining with us. See you again!
           </p>
         </div>
       </div>
@@ -349,18 +325,7 @@ export function OrderTracker() {
                 </div>
                 <div className="max-h-[60dvh] overflow-y-auto p-3 space-y-3">
                   {/* Paid session banner at the top */}
-                  {allPaid && (
-                    <PaidSessionBanner
-                      onReset={() => {
-                        setOpen(false);
-                        resetSession();
-                        // Redirect to the table menu so the next customer
-                        // starts fresh when they scan or reload the page
-                        const dest = tableId ? `/table/${tableId}` : "/menu";
-                        router.replace(dest);
-                      }}
-                    />
-                  )}
+                  {allPaid && <PaidSessionBanner />}
                   {visibleOrders.map((order) => (
                     <OrderCard
                       key={order.id}

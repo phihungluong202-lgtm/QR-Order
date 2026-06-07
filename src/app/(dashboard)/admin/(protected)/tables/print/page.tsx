@@ -90,11 +90,22 @@ function DownloadAllButton({ tables }: { tables: Table[] }) {
   const [done, setDone] = useState(false);
 
   async function downloadAll() {
-    const { generateQr, downloadQrPng } = await import("@/lib/qr-generator");
+    const { toCanvas } = await import("qrcode");
     for (const t of tables) {
       const url = getTableUrl(t.qr_code);
-      const matrix = generateQr(url, "M");
-      downloadQrPng(matrix, `table-${t.label}-qr.png`, { scale: 4 });
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 1200;
+      await toCanvas(canvas, url, {
+        width: 1200,
+        margin: 4,
+        errorCorrectionLevel: "H",
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+      const link = document.createElement("a");
+      link.download = `table-${t.label}-qr.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
       // Small delay between downloads to avoid browser blocking
       await new Promise((r) => setTimeout(r, 150));
     }

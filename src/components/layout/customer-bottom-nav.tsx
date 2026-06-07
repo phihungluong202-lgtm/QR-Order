@@ -13,11 +13,16 @@ export function CustomerBottomNav() {
   const itemCount = useCartStore((s) => s.itemCount());
   const activeOrderCount = useActiveOrderCount();
   const hasReadyOrder = useHasReadyOrder();
+  // Pass the last submitted orderId so the success page always loads with correct data
+  const submittedOrderId = useCartStore((s) => s.submittedOrderId);
+  const ordersHref = submittedOrderId
+    ? `/order-success?orderId=${submittedOrderId}`
+    : "/order-success";
 
   const navItems = [
     { href: "/menu", label: "Menu", icon: Home, badge: 0 },
     { href: "/cart", label: "Cart", icon: ShoppingBag, badge: itemCount },
-    { href: "/order-success", label: "Orders", icon: ClipboardList, badge: activeOrderCount, pulse: hasReadyOrder },
+    { href: ordersHref, label: "Orders", icon: ClipboardList, badge: activeOrderCount, pulse: hasReadyOrder },
     { href: "/checkout", label: "Checkout", icon: Receipt, badge: 0 },
   ] as const;
 
@@ -29,15 +34,16 @@ export function CustomerBottomNav() {
       <div className="mx-auto flex h-16 max-w-lg items-center justify-around">
         {navItems.map(({ href, label, icon: Icon, badge, ...rest }) => {
           const pulse = "pulse" in rest ? rest.pulse : false;
+          const baseHref = href.split("?")[0]; // strip query string for active check
           const active =
-            pathname.startsWith(href) ||
-            (href === "/menu" &&
+            pathname.startsWith(baseHref) ||
+            (baseHref === "/menu" &&
               (pathname.startsWith("/table") || pathname.startsWith("/t/")));
           const showBadge = badge > 0;
 
           return (
             <Link
-              key={href}
+              key={baseHref}
               href={href}
               className={cn(
                 "press relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors",

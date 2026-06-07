@@ -18,7 +18,6 @@ import {
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { createClientIfConfigured } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/types/database";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -58,7 +57,7 @@ function ConfettiBurst() {
     };
 
     const cx = W * 0.5;
-    const cy = H * 0.28;
+    const cy = H * 0.22;
 
     const particles: Particle[] = Array.from({ length: 130 }, () => {
       const angle = Math.random() * Math.PI * 2;
@@ -116,12 +115,12 @@ const STATUS_STEPS: {
   label: string;
   desc: string;
 }[] = [
-  { status: "pending",   Icon: Clock,           label: "Order received", desc: "Waiting for kitchen to confirm" },
-  { status: "confirmed", Icon: ClipboardList,   label: "Confirmed",      desc: "Kitchen acknowledged your order" },
-  { status: "preparing", Icon: ChefHat,         label: "Preparing",      desc: "Kitchen is preparing your food" },
-  { status: "ready",     Icon: CheckCircle2,    label: "Ready!",         desc: "Your food is ready — enjoy! 🎉" },
-  { status: "served",    Icon: UtensilsCrossed, label: "Served",         desc: "Enjoy your meal!" },
-  { status: "paid",      Icon: CreditCard,      label: "Paid ✓",        desc: "Payment received — thank you! 🙏" },
+  { status: "pending",   Icon: Clock,           label: "Received",   desc: "Waiting for kitchen to confirm" },
+  { status: "confirmed", Icon: ClipboardList,   label: "Confirmed",  desc: "Kitchen acknowledged your order" },
+  { status: "preparing", Icon: ChefHat,         label: "Preparing",  desc: "Kitchen is preparing your food" },
+  { status: "ready",     Icon: CheckCircle2,    label: "Ready!",     desc: "Your food is ready — enjoy! 🎉" },
+  { status: "served",    Icon: UtensilsCrossed, label: "Served",     desc: "Enjoy your meal!" },
+  { status: "paid",      Icon: CreditCard,      label: "Paid ✓",    desc: "Payment received — thank you! 🙏" },
 ];
 
 const STATUS_ORDER: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "served", "paid"];
@@ -141,14 +140,26 @@ interface OrderItemLine {
   imageUrl?: string | null;
 }
 
-// ─── Live order hook (status + items) ────────────────────────────────────────
+// ─── Live order hook ──────────────────────────────────────────────────────────
 
 function useLiveOrder(orderId: string | null) {
-  const [status, setStatus] = useState<OrderStatus>("pending");
+  const [fetchedStatus, setFetchedStatus] = useState<OrderStatus | null>(null);
   const [items, setItems] = useState<OrderItemLine[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loaded, setLoaded] = useState(false);
   const updateTrackedStatus = useCartStore((s) => s.updateTrackedStatus);
+  // Read the live status from the Zustand store (updated by order-tracker realtime subscription)
+  const storeStatus = useCartStore((s) =>
+    s.activeOrders.find((o) => o.id === orderId)?.status ?? null,
+  );
+
+  // The effective status: prefer the most recent between fetched and store
+  const effectiveStatus: OrderStatus =
+    fetchedStatus !== null && storeStatus !== null
+      ? STATUS_ORDER.indexOf(fetchedStatus) >= STATUS_ORDER.indexOf(storeStatus)
+        ? fetchedStatus
+        : storeStatus
+      : fetchedStatus ?? storeStatus ?? "pending";
 
   useEffect(() => {
     if (!orderId || orderId === "unknown") { setLoaded(true); return; }
@@ -158,8 +169,7 @@ function useLiveOrder(orderId: string | null) {
 
     async function fetchOrder() {
       if (!client) return;
-      // Fetch order + items + menu item info in one query
-      const { data } = await client
+      const { data, error } = await client
         .from("orders")
         .select(`
           status,
@@ -176,12 +186,17 @@ function useLiveOrder(orderId: string | null) {
         .is("deleted_at", null)
         .single();
 
+      if (error) {
+        console.warn("[order-success] fetch error:", error.message);
+        setLoaded(true);
+        return;
+      }
+
       if (data) {
-        const latestStatus = data.status as OrderStatus;
-        setStatus(latestStatus);
+        const latest = data.status as OrderStatus;
+        setFetchedStatus(latest);
         setTotal(data.total ?? 0);
-        // Keep the global order-tracker in sync too
-        if (orderId) updateTrackedStatus(orderId, latestStatus);
+        if (orderId) updateTrackedStatus(orderId, latest);
         const lines: OrderItemLine[] = (data.order_items ?? []).map((oi: {
           id: string;
           quantity: number;
@@ -203,7 +218,7 @@ function useLiveOrder(orderId: string | null) {
 
     fetchOrder();
 
-    // Realtime subscription for instant status updates
+    // Realtime subscription for instant status push
     const channel = client
       .channel(`order-success-${orderId}`)
       .on(
@@ -212,24 +227,104 @@ function useLiveOrder(orderId: string | null) {
         (payload) => {
           const newStatus = (payload.new as { status: OrderStatus }).status;
           if (newStatus) {
-            setStatus(newStatus);
-            // Sync to global tracker store as well
+            setFetchedStatus(newStatus);
             if (orderId) updateTrackedStatus(orderId, newStatus);
           }
         },
       )
       .subscribe();
 
-    // Polling fallback: refresh status every 10 s in case realtime is interrupted
-    const poll = setInterval(() => { fetchOrder(); }, 10_000);
+    // Polling fallback every 8 s
+    const poll = setInterval(() => { fetchOrder(); }, 8_000);
 
     return () => {
       client.removeChannel(channel);
       clearInterval(poll);
     };
-  }, [orderId]);
+  }, [orderId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { status, items, total, loaded };
+  return { status: effectiveStatus, items, total, loaded };
+}
+
+// ─── Sticky status bar ────────────────────────────────────────────────────────
+
+function StickyStatusBar({ status }: { status: OrderStatus }) {
+  const currentIdx = statusIndex(status);
+  const steps = STATUS_STEPS.filter((s) => s.status !== "cancelled");
+  const currentStep = STATUS_STEPS.find((s) => s.status === status);
+
+  return (
+    <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur-md px-4 pt-safe-top shadow-sm">
+      {/* Step icons */}
+      <div className="mx-auto flex max-w-sm items-start justify-center py-3">
+        {steps.map((step, i) => {
+          const Icon = step.Icon;
+          const done = i < currentIdx;
+          const active = i === currentIdx;
+          return (
+            <div key={step.status} className="flex flex-1 flex-col items-center">
+              <div className="flex w-full items-center">
+                {i > 0 && (
+                  <div className={cn(
+                    "h-[2px] flex-1 transition-colors duration-500",
+                    done || active ? "bg-emerald-400 dark:bg-emerald-600" : "bg-muted",
+                  )} />
+                )}
+                <motion.div
+                  animate={{ scale: active ? [1, 1.08, 1] : 1 }}
+                  transition={{ repeat: active ? Infinity : 0, duration: 1.5, repeatDelay: 0.8 }}
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-500",
+                    active
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-600 shadow-md shadow-emerald-200/60 dark:bg-emerald-950 dark:text-emerald-400"
+                      : done
+                      ? "border-emerald-400 bg-emerald-100 text-emerald-600 dark:bg-emerald-900 dark:text-emerald-300"
+                      : "border-muted bg-muted/30 text-muted-foreground/30",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </motion.div>
+                {i < steps.length - 1 && (
+                  <div className={cn(
+                    "h-[2px] flex-1 transition-colors duration-500",
+                    done ? "bg-emerald-400 dark:bg-emerald-600" : "bg-muted",
+                  )} />
+                )}
+              </div>
+              <p className={cn(
+                "mt-1 px-0.5 text-center text-[9px] font-semibold leading-tight tracking-tight",
+                active ? "text-foreground" : "text-muted-foreground/50",
+              )}>
+                {step.label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Status description pill */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={status}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 4 }}
+          className="mx-auto mb-3 max-w-sm"
+        >
+          <p className={cn(
+            "rounded-xl px-4 py-2 text-center text-[11px] font-semibold",
+            status === "ready"
+              ? "bg-emerald-500 text-white"
+              : status === "paid"
+              ? "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+              : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400",
+          )}>
+            {currentStep?.desc ?? "Processing your order…"}
+          </p>
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
 }
 
 // ─── Order items list ─────────────────────────────────────────────────────────
@@ -238,12 +333,7 @@ function OrderItemsList({ items, total }: { items: OrderItemLine[]; total: numbe
   if (items.length === 0) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.55 }}
-      className="w-full overflow-hidden rounded-2xl border bg-card shadow-sm"
-    >
+    <div className="w-full overflow-hidden rounded-2xl border bg-card shadow-sm">
       {/* Header */}
       <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-3">
         <Receipt className="h-4 w-4 text-muted-foreground" />
@@ -260,7 +350,7 @@ function OrderItemsList({ items, total }: { items: OrderItemLine[]; total: numbe
             key={item.id}
             initial={{ opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.6 + idx * 0.05 }}
+            transition={{ delay: 0.1 + idx * 0.05 }}
             className="flex items-center gap-3 px-4 py-3"
           >
             {/* Thumbnail */}
@@ -313,72 +403,6 @@ function OrderItemsList({ items, total }: { items: OrderItemLine[]; total: numbe
           </span>
         </div>
       </div>
-    </motion.div>
-  );
-}
-
-// ─── Status progress ──────────────────────────────────────────────────────────
-
-function StatusProgress({ status }: { status: OrderStatus }) {
-  const currentIdx = statusIndex(status);
-  const steps = STATUS_STEPS.filter((s) => s.status !== "cancelled");
-
-  return (
-    <div className="w-full">
-      <div className="flex items-start justify-center">
-        {steps.map((step, i) => {
-          const Icon = step.Icon;
-          const done = i < currentIdx;
-          const active = i === currentIdx;
-          return (
-            <div key={step.status} className="flex flex-1 flex-col items-center">
-              <div className="flex w-full items-center">
-                {i > 0 && (
-                  <div className={cn("h-0.5 flex-1 transition-colors duration-500",
-                    done || active ? "bg-emerald-300 dark:bg-emerald-700" : "bg-muted")} />
-                )}
-                <motion.div
-                  animate={{ scale: active ? [1, 1.1, 1] : 1 }}
-                  transition={{ repeat: active ? Infinity : 0, duration: 1.5, repeatDelay: 0.5 }}
-                  className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-500",
-                    active
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-600 shadow-md shadow-emerald-200 dark:bg-emerald-950 dark:text-emerald-400"
-                      : done
-                      ? "border-emerald-400 bg-emerald-100 text-emerald-600 dark:bg-emerald-900 dark:text-emerald-300"
-                      : "border-muted bg-muted/30 text-muted-foreground/40",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </motion.div>
-                {i < steps.length - 1 && (
-                  <div className={cn("h-0.5 flex-1 transition-colors duration-500",
-                    done ? "bg-emerald-300 dark:bg-emerald-700" : "bg-muted")} />
-                )}
-              </div>
-              <p className={cn(
-                "mt-1.5 px-0.5 text-center text-[10px] font-medium leading-tight",
-                active ? "text-foreground" : "text-muted-foreground/60",
-              )}>
-                {step.label}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Status description */}
-      <AnimatePresence mode="wait">
-        <motion.p
-          key={status}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          className="mt-4 rounded-xl bg-emerald-50 px-4 py-2.5 text-center text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-        >
-          {STATUS_STEPS.find((s) => s.status === status)?.desc ?? "Processing your order…"}
-        </motion.p>
-      </AnimatePresence>
     </div>
   );
 }
@@ -415,26 +439,34 @@ function ItemsSkeleton() {
 
 function SuccessContent() {
   const params = useSearchParams();
-  const orderId = params.get("orderId");
+  const rawOrderId = params.get("orderId");
+  // Fallback to the last submitted orderId from the store if URL param is missing
+  const submittedOrderId = useCartStore((s) => s.submittedOrderId);
+  const orderId = rawOrderId ?? submittedOrderId;
+
   const { status, items, total, loaded } = useLiveOrder(orderId);
   const isCancelled = status === "cancelled";
   const isPaid = status === "paid";
 
   return (
-    <>
+    <div className="flex min-h-dvh flex-col">
       <ConfettiBurst />
 
-      <div className="mx-auto max-w-sm px-5 pb-32 pt-10">
+      {/* ── Sticky status bar at the very top ──────────────────────────── */}
+      {!isCancelled && (
+        <StickyStatusBar status={status} />
+      )}
 
-        {/* ── Hero section ──────────────────────────────────────────────── */}
+      {/* ── Scrollable body ─────────────────────────────────────────────── */}
+      <div className="mx-auto w-full max-w-sm flex-1 px-5 pb-32 pt-6">
+
+        {/* Hero */}
         <div className="flex flex-col items-center text-center">
-
-          {/* Animated icon */}
           <motion.div
             initial={{ scale: 0.3, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 240, damping: 16, delay: 0.1 }}
-            className="relative mb-5 flex h-24 w-24 items-center justify-center"
+            className="relative mb-4 flex h-20 w-20 items-center justify-center"
           >
             {!isCancelled && [0, 1, 2].map((i) => (
               <motion.span
@@ -455,18 +487,18 @@ function SuccessContent() {
               : "bg-emerald-50 dark:bg-emerald-950",
             )} />
             {isCancelled
-              ? <X className="relative h-14 w-14 text-red-500" strokeWidth={1.5} />
+              ? <X className="relative h-12 w-12 text-red-500" strokeWidth={1.5} />
               : isPaid
-              ? <CreditCard className="relative h-14 w-14 text-teal-500" strokeWidth={1.5} />
-              : <CheckCircle2 className="relative h-14 w-14 text-emerald-500" strokeWidth={1.5} />
+              ? <CreditCard className="relative h-12 w-12 text-teal-500" strokeWidth={1.5} />
+              : <CheckCircle2 className="relative h-12 w-12 text-emerald-500" strokeWidth={1.5} />
             }
           </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="text-3xl font-extrabold tracking-tight"
+            transition={{ delay: 0.25 }}
+            className="text-2xl font-extrabold tracking-tight"
           >
             {isCancelled ? "Order cancelled" : isPaid ? "Payment received! 🙏" : "Order sent! 🎉"}
           </motion.h1>
@@ -474,8 +506,8 @@ function SuccessContent() {
           <motion.p
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="mt-2 text-sm text-muted-foreground"
+            transition={{ delay: 0.35 }}
+            className="mt-1.5 text-sm text-muted-foreground"
           >
             {isCancelled
               ? "Your order was cancelled. Please place a new order."
@@ -484,62 +516,50 @@ function SuccessContent() {
               : "Sit back and relax — we'll bring it right to your table."}
           </motion.p>
 
-          {/* Order ID badge */}
           {orderId && orderId !== "unknown" && (
             <motion.div
               initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.5, type: "spring" }}
-              className="mt-3 rounded-full bg-muted px-4 py-1.5 text-xs font-mono font-semibold text-muted-foreground"
+              transition={{ delay: 0.45, type: "spring" }}
+              className="mt-2.5 rounded-full bg-muted px-4 py-1 text-xs font-mono font-semibold text-muted-foreground"
             >
               Order #{orderId.slice(0, 8).toUpperCase()}
             </motion.div>
           )}
         </div>
 
-        {/* ── Order items ────────────────────────────────────────────────── */}
-        <div className="mt-6">
+        {/* ── Order items ─────────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-5"
+        >
           {!loaded ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-              <ItemsSkeleton />
-            </motion.div>
+            <ItemsSkeleton />
           ) : (
             <OrderItemsList items={items} total={total} />
           )}
-        </div>
+        </motion.div>
 
-        {/* ── Divider ────────────────────────────────────────────────────── */}
-        <Separator className="my-6" />
-
-        {/* ── Status progress ────────────────────────────────────────────── */}
-        {!isCancelled && loaded && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.65 }}
-          >
-            <StatusProgress status={status} />
-          </motion.div>
-        )}
-
-        {/* ── Estimated time ──────────────────────────────────────────────── */}
+        {/* ── Estimated time ────────────────────────────────────────────── */}
         {!isCancelled && status === "pending" && (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
+            transition={{ delay: 0.7 }}
             className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-center text-xs font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
           >
             ⏱ Estimated preparation: 10–20 minutes
           </motion.p>
         )}
 
-        {/* ── Actions ────────────────────────────────────────────────────── */}
+        {/* ── Actions ───────────────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.75 }}
-          className="mt-8 flex flex-col gap-3"
+          transition={{ delay: 0.6 }}
+          className="mt-6 flex flex-col gap-3"
         >
           <Button size="lg" className="press h-12 w-full shadow-md shadow-primary/20" asChild>
             <Link href="/menu">
@@ -551,9 +571,8 @@ function SuccessContent() {
             <Link href="/menu">Back to menu</Link>
           </Button>
         </motion.div>
-
       </div>
-    </>
+    </div>
   );
 }
 

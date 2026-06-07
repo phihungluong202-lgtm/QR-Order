@@ -62,11 +62,13 @@ function TableMenuPageContent() {
           // This ensures the customer sees their orders even after closing the browser.
           const supabase = createClientIfConfigured();
           if (supabase && !cancelled) {
+            // Only restore orders that are still active — exclude terminal states
+            // (paid/served) so a new customer scanning the table starts fresh
             const { data: serverOrders } = await supabase
               .from("orders")
               .select("id, status, total, created_at")
               .eq("table_id", data.tableId)
-              .not("status", "in", '("cancelled")')
+              .not("status", "in", '("cancelled","paid","served")')
               .is("deleted_at", null)
               .order("created_at", { ascending: false })
               .limit(10);

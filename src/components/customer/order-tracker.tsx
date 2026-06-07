@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ChefHat,
@@ -238,7 +239,14 @@ function useRealtimeOrders() {
 
 export function OrderTracker() {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const { activeOrders, removeTrackedOrder, resetSession } = useRealtimeOrders();
+  const tableId = useCartStore((s) => s.tableId);
+
+  // Auto-reset: when ALL orders are paid, start the 10s countdown automatically
+  // regardless of whether the drawer is open (so the table resets even if the
+  // customer just closes the browser after payment).
+  const allPaidRef = useRef(false);
 
   // Show all orders for the current table session except cancelled
   // (served/paid orders stay visible until the next table scan resets the session)
@@ -250,6 +258,18 @@ export function OrderTracker() {
   const allPaid =
     visibleOrders.length > 0 &&
     visibleOrders.every((o) => o.status === "paid" || o.status === "cancelled");
+
+  // Auto-reset after 10 s when all orders are paid (fires even if drawer is closed)
+  useEffect(() => {
+    if (!allPaid || allPaidRef.current) return;
+    allPaidRef.current = true;
+    const timer = setTimeout(() => {
+      resetSession();
+      const dest = tableId ? `/table/${tableId}` : "/menu";
+      router.replace(dest);
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [allPaid, resetSession, router, tableId]);
 
   if (visibleOrders.length === 0) return null;
 
@@ -330,7 +350,16 @@ export function OrderTracker() {
                 <div className="max-h-[60dvh] overflow-y-auto p-3 space-y-3">
                   {/* Paid session banner at the top */}
                   {allPaid && (
-                    <PaidSessionBanner onReset={() => { setOpen(false); resetSession(); }} />
+                    <PaidSessionBanner
+                      onReset={() => {
+                        setOpen(false);
+                        resetSession();
+                        // Redirect to the table menu so the next customer
+                        // starts fresh when they scan or reload the page
+                        const dest = tableId ? `/table/${tableId}` : "/menu";
+                        router.replace(dest);
+                      }}
+                    />
                   )}
                   {visibleOrders.map((order) => (
                     <OrderCard

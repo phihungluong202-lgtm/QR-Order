@@ -51,16 +51,20 @@ export function QrCode({
     if (!canvas || !matrix) return;
 
     const n = matrix.length;
-    const moduleSize = (size - margin * 2) / n;
+    // margin is in QR modules (not pixels); compute pixel size from total modules
     const totalModules = n + margin * 2;
-    const px = totalModules * moduleSize;
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const moduleSize = size / totalModules;
 
-    canvas.width = px;
-    canvas.height = px;
+    // Physical pixel resolution (sharp on Retina)
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+
     const ctx = canvas.getContext("2d")!;
+    ctx.scale(dpr, dpr);
 
     ctx.fillStyle = light;
-    ctx.fillRect(0, 0, px, px);
+    ctx.fillRect(0, 0, size, size);
     ctx.fillStyle = dark;
 
     for (let r = 0; r < n; r++) {

@@ -74,8 +74,8 @@ function QrModal({ table, onClose }: { table: Table; onClose: () => void }) {
         </div>
 
         {/* QR code (local, no external service) */}
-        <div className="mx-auto mb-4 flex items-center justify-center rounded-xl border bg-white p-3">
-          <QrCode value={url} size={220} ecc="M" />
+        <div className="mx-auto mb-4 flex items-center justify-center rounded-xl border bg-white p-4">
+          <QrCode value={url} size={260} ecc="H" />
         </div>
 
         {/* URL chip */}

@@ -51,7 +51,7 @@ function QrCard({ table }: { table: Table }) {
 
       {/* QR code */}
       <div className="rounded-xl bg-white p-1 ring-1 ring-gray-100">
-        <QrCode value={url} size={160} ecc="M" dark="#1a1a1a" />
+        <QrCode value={url} size={200} ecc="H" dark="#1a1a1a" />
       </div>
 
       {/* Table label */}

@@ -157,7 +157,7 @@ function PaidSessionBanner({ onReset }: { onReset: () => void }) {
           <p className="mt-0.5 text-xs text-teal-600/80 dark:text-teal-400/80">
             Session resets in{" "}
             <Countdown
-              seconds={120}
+              seconds={10}
               onComplete={onReset}
             />
           </p>

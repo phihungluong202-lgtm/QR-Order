@@ -43,10 +43,13 @@ export default function Error({ error, reset }: ErrorPageProps) {
           An unexpected error occurred. It has been logged and our team will look into it.
         </p>
 
-        {/* Error digest for support reference */}
+        {/* Error details for debugging */}
+        <p className="mx-auto mt-3 max-w-sm rounded-lg bg-muted px-3 py-2 text-left font-mono text-xs text-muted-foreground break-all">
+          {error.message || "Unknown error"}
+        </p>
         {error.digest && (
-          <p className="mx-auto mt-3 w-fit rounded-lg bg-muted px-3 py-1 font-mono text-xs text-muted-foreground">
-            Error ID: {error.digest}
+          <p className="mx-auto mt-1 w-fit rounded-lg bg-muted px-3 py-1 font-mono text-xs text-muted-foreground">
+            ID: {error.digest}
           </p>
         )}
       </motion.div>

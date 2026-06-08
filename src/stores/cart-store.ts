@@ -203,6 +203,18 @@ export const useCartStore = create<CartStore>()(
           };
         }),
     }),
-    { name: "qr-order-cart" },
+    {
+      name: "qr-order-cart",
+      // Guard against corrupted/old localStorage data where arrays might be null
+      merge: (persisted: unknown, current: CartStore): CartStore => {
+        const p = (persisted ?? {}) as Partial<CartStore>;
+        return {
+          ...current,
+          ...p,
+          activeOrders: Array.isArray(p.activeOrders) ? p.activeOrders : [],
+          lines: Array.isArray(p.lines) ? p.lines : [],
+        };
+      },
+    },
   ),
 );

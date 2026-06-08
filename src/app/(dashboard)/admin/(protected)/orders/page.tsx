@@ -16,6 +16,7 @@ import {
   CreditCard,
   Banknote,
   ReceiptText,
+  DoorClosed,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -30,6 +31,7 @@ import {
   useAdminStats,
   useUpdateOrderStatus,
   usePayTable,
+  useCloseTable,
 } from "@/hooks/use-admin";
 import type { OrderStatus, OrderWithRelations } from "@/types/database";
 import { useToast } from "@/components/ui/use-toast";
@@ -332,8 +334,10 @@ interface TableGroup {
 function TablePaymentCard({ group }: { group: TableGroup }) {
   const { toast } = useToast();
   const { mutate: payTable, isPending } = usePayTable();
+  const { mutate: closeTable, isPending: isClosing } = useCloseTable();
   // "idle" → "confirm" → "countdown" → "done"
   const [phase, setPhase] = useState<"idle" | "confirm" | "countdown" | "done">("idle");
+  const [closePhase, setClosePhase] = useState<"idle" | "confirm">("idle");
 
   const activeOrders = group.orders.filter((o) => !["cancelled", "paid"].includes(o.status));
   const itemCount = activeOrders.reduce(
@@ -345,6 +349,7 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
     payTable(group.tableId, {
       onSuccess: (data) => {
         setPhase("countdown");
+        setClosePhase("idle");
         toast({
           title: `${tableDisplayName(group.tableLabel)} — Payment received ✓`,
           description: `${data.count} order${data.count > 1 ? "s" : ""} · ${formatCurrency(data.total)}`,
@@ -353,6 +358,23 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
       onError: (err) => {
         setPhase("idle");
         toast({ title: "Payment failed", description: err.message, variant: "destructive" });
+      },
+    });
+  }
+
+  function handleCloseTable() {
+    closeTable(group.tableId, {
+      onSuccess: (data) => {
+        setClosePhase("idle");
+        setPhase("idle");
+        toast({
+          title: `${tableDisplayName(group.tableLabel)} — Table closed`,
+          description: `${data.count} order${data.count !== 1 ? "s" : ""} cancelled · customer session reset`,
+        });
+      },
+      onError: (err) => {
+        setClosePhase("idle");
+        toast({ title: "Could not close table", description: err.message, variant: "destructive" });
       },
     });
   }
@@ -408,19 +430,60 @@ function TablePaymentCard({ group }: { group: TableGroup }) {
         })}
       </div>
 
-      {/* Payment action area */}
+      {/* Payment / close action area */}
       <div className="border-t bg-muted/20 px-5 py-3">
         <AnimatePresence mode="wait">
-          {phase === "idle" && (
-            <motion.button
-              key="collect"
+          {phase === "idle" && closePhase === "idle" && (
+            <motion.div
+              key="actions"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setPhase("confirm")}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all"
+              className="flex flex-col gap-2"
             >
-              <Banknote className="h-4 w-4" />
-              Collect Payment · {formatCurrency(group.total)}
-            </motion.button>
+              <button
+                onClick={() => setPhase("confirm")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-700 active:scale-[0.98] transition-all"
+              >
+                <Banknote className="h-4 w-4" />
+                Collect Payment · {formatCurrency(group.total)}
+              </button>
+              <button
+                onClick={() => setClosePhase("confirm")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+              >
+                <DoorClosed className="h-4 w-4" />
+                Close Table
+              </button>
+            </motion.div>
+          )}
+
+          {closePhase === "confirm" && phase === "idle" && (
+            <motion.div
+              key="close-confirm"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="space-y-2"
+            >
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                Close {tableDisplayName(group.tableLabel)}? All active orders will be cancelled and the customer screen will reset.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setClosePhase("idle")}
+                  className="flex-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCloseTable}
+                  disabled={isClosing}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                >
+                  {isClosing
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <DoorClosed className="h-3.5 w-3.5" />}
+                  Close Table
+                </button>
+              </div>
+            </motion.div>
           )}
 
           {phase === "confirm" && (

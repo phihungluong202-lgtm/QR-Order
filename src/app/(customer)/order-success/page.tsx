@@ -15,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClientIfConfigured } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/types/database";
@@ -444,33 +443,9 @@ function NoOrdersState() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function SuccessContent() {
-  const { status, allItems, total, loaded, tableId, hasOrders } = useTableOrders();
-  const router = useRouter();
-  const clearCart = useCartStore((s) => s.clearCart);
-  const removeTrackedOrder = useCartStore((s) => s.removeTrackedOrder);
-  const allActiveOrders = useCartStore((s) => s.activeOrders);
+  const { status, allItems, total, loaded, hasOrders } = useTableOrders();
   const isCancelled = status === "cancelled";
   const isPaid = status === "paid";
-
-  // Auto-reset: when the table is fully paid, silently clear the session
-  // and redirect to a fresh menu so the next customer starts clean.
-  // Mirrors the same logic in OrderTracker but works even when the banner
-  // is not visible (e.g. customer is already on this page).
-  const resetFiredRef = useRef(false);
-  useEffect(() => {
-    // Fire once when isPaid becomes true and there are tracked orders to clear
-    if (!isPaid || !hasOrders || resetFiredRef.current) return;
-    resetFiredRef.current = true;
-    const timer = setTimeout(() => {
-      allActiveOrders
-        .filter((o) => o.tableId === tableId)
-        .forEach((o) => removeTrackedOrder(o.id));
-      clearCart(true); // clears lines, tableOrderId, submittedOrderId
-      router.replace(tableId ? `/table/${tableId}` : "/menu");
-    }, 10_000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPaid]);
 
   return (
     <div className="flex min-h-dvh flex-col">

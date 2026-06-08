@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ChefHat,
@@ -151,7 +150,6 @@ function useRealtimeOrders() {
   const allActiveOrders = useCartStore((s) => s.activeOrders);
   const updateTrackedStatus = useCartStore((s) => s.updateTrackedStatus);
   const removeTrackedOrder = useCartStore((s) => s.removeTrackedOrder);
-  const clearCart = useCartStore((s) => s.clearCart);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const channelRef = useRef<any>(null);
 
@@ -203,27 +201,14 @@ function useRealtimeOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTableId, activeOrders.map((o) => o.id).sort().join(",")]);
 
-  // Reset handler for after the 2-min countdown
-  function resetSession() {
-    activeOrders.forEach((o) => removeTrackedOrder(o.id));
-    clearCart(true);
-  }
-
-  return { activeOrders, updateTrackedStatus, removeTrackedOrder, resetSession };
+  return { activeOrders, updateTrackedStatus, removeTrackedOrder };
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function OrderTracker() {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
-  const { activeOrders, removeTrackedOrder, resetSession } = useRealtimeOrders();
-  const tableId = useCartStore((s) => s.tableId);
-
-  // Auto-reset: when ALL orders are paid, start the 10s countdown automatically
-  // regardless of whether the drawer is open (so the table resets even if the
-  // customer just closes the browser after payment).
-  const allPaidRef = useRef(false);
+  const { activeOrders, removeTrackedOrder } = useRealtimeOrders();
 
   // Show all orders for the current table session except cancelled
   // (served/paid orders stay visible until the next table scan resets the session)
@@ -235,23 +220,6 @@ export function OrderTracker() {
   const allPaid =
     visibleOrders.length > 0 &&
     visibleOrders.every((o) => o.status === "paid" || o.status === "cancelled");
-
-  // Auto-reset after 10 s when all orders are paid.
-  // resetSession / router / tableId are intentionally NOT in the dep array —
-  // they are captured fresh inside the timeout callback, which runs only once
-  // (guarded by allPaidRef).  Only reacting to allPaid prevents the cleanup
-  // from cancelling the timer on every render (which was the previous bug).
-  useEffect(() => {
-    if (!allPaid || allPaidRef.current) return;
-    allPaidRef.current = true;
-    const timer = setTimeout(() => {
-      resetSession();
-      const dest = tableId ? `/table/${tableId}` : "/menu";
-      router.replace(dest);
-    }, 10_000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allPaid]);
 
   if (visibleOrders.length === 0) return null;
 
@@ -355,7 +323,7 @@ export function useActiveOrderCount() {
   return useCartStore((s) => {
     const tid = s.tableId;
     return s.activeOrders.filter(
-      (o) => o.tableId === tid && (ACTIVE_ORDER_STATUSES.includes(o.status) || o.status === "paid"),
+      (o) => o.tableId === tid && ACTIVE_ORDER_STATUSES.includes(o.status),
     ).length;
   });
 }
@@ -364,7 +332,7 @@ export function useHasReadyOrder() {
   return useCartStore((s) => {
     const tid = s.tableId;
     return s.activeOrders.some(
-      (o) => o.tableId === tid && (o.status === "ready" || o.status === "paid"),
+      (o) => o.tableId === tid && o.status === "ready",
     );
   });
 }

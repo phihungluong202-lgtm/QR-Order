@@ -59,6 +59,8 @@ interface CartStore {
   removeTrackedOrder: (orderId: string) => void;
   /** Merge server-fetched orders into activeOrders (restores state after reopen) */
   syncServerOrders: (orders: TrackedOrder[]) => void;
+  /** Clear cart + orders for current table; keep tableId so customer can order again */
+  resetTableSession: () => void;
 }
 
 function generateKey() {
@@ -227,6 +229,17 @@ export const useCartStore = create<CartStore>()(
             tableOrderId: nextTableOrderId,
           };
         }),
+
+      resetTableSession: () =>
+        set((state) => ({
+          lines: [],
+          submittedOrderId: null,
+          idempotencyKey: generateKey(),
+          tableOrderId: null,
+          activeOrders: state.tableId
+            ? state.activeOrders.filter((o) => o.tableId !== state.tableId)
+            : [],
+        })),
     }),
     {
       name: "qr-order-cart",

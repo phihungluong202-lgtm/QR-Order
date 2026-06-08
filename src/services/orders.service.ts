@@ -198,4 +198,28 @@ export class OrdersService {
     assertNoError(updateError);
     return { count: ids.length, total };
   }
+
+  /** Cancel all non-terminal orders for a table (admin "close table") */
+  async closeTable(tableId: string): Promise<{ count: number }> {
+    const { data: orders, error: fetchError } = await this.client
+      .from("orders")
+      .select("id, status")
+      .eq("table_id", tableId)
+      .not("status", "in", '("cancelled","paid")')
+      .is("deleted_at", null);
+
+    assertNoError(fetchError);
+    if (!orders || orders.length === 0) return { count: 0 };
+
+    const now = new Date().toISOString();
+    const ids = orders.map((o) => o.id);
+
+    const { error: updateError } = await this.client
+      .from("orders")
+      .update({ status: "cancelled", updated_at: now })
+      .in("id", ids);
+
+    assertNoError(updateError);
+    return { count: ids.length };
+  }
 }

@@ -14,13 +14,13 @@ import {
   Receipt,
   X,
 } from "lucide-react";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClientIfConfigured } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/types/database";
 import { cn, formatCurrency } from "@/lib/utils";
-import { useCartStore } from "@/stores/cart-store";
+import { useCartStore, type TrackedOrder } from "@/stores/cart-store";
 
 // ─── Canvas confetti ──────────────────────────────────────────────────────────
 
@@ -103,6 +103,7 @@ interface FetchedOrder {
   id: string;
   status: OrderStatus;
   total: number;
+  created_at: string;
   order_items: {
     id: string;
     quantity: number;
@@ -117,25 +118,36 @@ interface FetchedOrder {
 
 function useTableOrders() {
   const tableId = useCartStore((s) => s.tableId);
-  const storeOrders = useCartStore((s) =>
-    s.activeOrders.filter((o) => o.tableId === tableId),
-  );
+  const activeOrders = useCartStore((s) => s.activeOrders);
+  const syncServerOrders = useCartStore((s) => s.syncServerOrders);
   const updateTrackedStatus = useCartStore((s) => s.updateTrackedStatus);
+
+  const storeOrders = useMemo(
+    () => activeOrders.filter((o) => o.tableId === tableId),
+    [activeOrders, tableId],
+  );
 
   const [fetched, setFetched] = useState<FetchedOrder[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!tableId) { setLoaded(true); return; }
+    if (!tableId) {
+      setLoaded(true);
+      return;
+    }
     const client = createClientIfConfigured();
-    if (!client) { setLoaded(true); return; }
+    if (!client) {
+      setLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
 
     async function fetchOrders() {
-      if (!client) return;
-      const { data, error } = await client
+      const { data, error } = await client!
         .from("orders")
         .select(`
-          id, status, total,
+          id, status, total, created_at,
           order_items (
             id, quantity, unit_price, notes,
             menu_item:menu_items ( name, image_url )
@@ -147,22 +159,33 @@ function useTableOrders() {
         .order("created_at", { ascending: false })
         .limit(5);
 
+      if (cancelled) return;
+
       if (error) {
         console.warn("[order-success] fetch error:", error.message);
         setLoaded(true);
         return;
       }
+
       if (data) {
-        setFetched(data as FetchedOrder[]);
-        // Sync statuses back to the global store
-        (data as FetchedOrder[]).forEach((o) => updateTrackedStatus(o.id, o.status));
+        const orders = data as FetchedOrder[];
+        setFetched(orders);
+
+        // Single batched store update — avoids React #185 infinite update loop
+        const tracked: TrackedOrder[] = orders.map((o) => ({
+          id: o.id,
+          status: o.status,
+          tableId: tableId!,
+          total: o.total ?? undefined,
+          createdAt: o.created_at,
+        }));
+        syncServerOrders(tracked);
       }
       setLoaded(true);
     }
 
     fetchOrders();
 
-    // Realtime: listen to any order update for this table
     const channel = client
       .channel(`success-table-${tableId}`)
       .on(
@@ -170,24 +193,27 @@ function useTableOrders() {
         { event: "UPDATE", schema: "public", table: "orders", filter: `table_id=eq.${tableId}` },
         (payload) => {
           const u = payload.new as { id: string; status: OrderStatus };
-          if (u?.id && u?.status) {
-            updateTrackedStatus(u.id, u.status);
-            setFetched((prev) =>
-              prev.map((o) => (o.id === u.id ? { ...o, status: u.status } : o)),
+          if (!u?.id || !u?.status) return;
+          updateTrackedStatus(u.id, u.status);
+          setFetched((prev) => {
+            const idx = prev.findIndex((o) => o.id === u.id);
+            if (idx < 0 || prev[idx]!.status === u.status) return prev;
+            return prev.map((o) =>
+              o.id === u.id ? { ...o, status: u.status } : o,
             );
-          }
+          });
         },
       )
       .subscribe();
 
-    // Polling fallback every 8 s
     const poll = setInterval(fetchOrders, 8_000);
 
     return () => {
+      cancelled = true;
       client.removeChannel(channel);
       clearInterval(poll);
     };
-  }, [tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tableId, syncServerOrders, updateTrackedStatus]);
 
   // ── Derive status ──────────────────────────────────────────────────────────
   // Use the most-advanced status between store (realtime) and fetched data.
@@ -232,7 +258,8 @@ function useTableOrders() {
     total,
     loaded,
     tableId,
-    hasOrders: storeOrders.length > 0 || fetched.length > 0,
+    // Prefer server data; fall back to persisted store when switching tabs
+    hasOrders: fetched.length > 0 || storeOrders.length > 0,
   };
 }
 
@@ -526,7 +553,7 @@ function SuccessContent() {
           transition={{ delay: 0.5 }}
           className="mt-5"
         >
-          {!loaded ? (
+          {!loaded || (hasOrders && allItems.length === 0) ? (
             <ItemsSkeleton />
           ) : !hasOrders ? (
             <NoOrdersState />

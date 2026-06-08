@@ -92,7 +92,6 @@ export function useSubmitOrder() {
 
     onSuccess: ({ order, appended }) => {
       const orderId = order?.id ?? "unknown";
-      setSubmittedOrderId(orderId);
 
       if (appended && existingOrder) {
         // Just update the tracker — keep tableOrderId the same
@@ -115,7 +114,8 @@ export function useSubmitOrder() {
         }
       }
 
-      clearCart(); // preserves tableOrderId
+      clearCart(); // preserves tableOrderId + submittedOrderId
+      setSubmittedOrderId(orderId);
       router.push(`/order-success?orderId=${orderId}`);
     },
 

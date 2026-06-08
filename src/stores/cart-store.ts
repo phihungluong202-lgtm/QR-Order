@@ -149,7 +149,7 @@ export const useCartStore = create<CartStore>()(
       clearCart: (clearOrder = false) =>
         set((state) => ({
           lines: [],
-          submittedOrderId: null,
+          submittedOrderId: clearOrder ? null : state.submittedOrderId,
           idempotencyKey: generateKey(),
           tableOrderId: clearOrder ? null : state.tableOrderId,
         })),
@@ -170,11 +170,15 @@ export const useCartStore = create<CartStore>()(
         })),
 
       updateTrackedStatus: (orderId, status) =>
-        set((state) => ({
-          activeOrders: state.activeOrders.map((o) =>
-            o.id === orderId ? { ...o, status } : o,
-          ),
-        })),
+        set((state) => {
+          const existing = state.activeOrders.find((o) => o.id === orderId);
+          if (!existing || existing.status === status) return state;
+          return {
+            activeOrders: state.activeOrders.map((o) =>
+              o.id === orderId ? { ...o, status } : o,
+            ),
+          };
+        }),
 
       removeTrackedOrder: (orderId) =>
         set((state) => ({
@@ -183,23 +187,44 @@ export const useCartStore = create<CartStore>()(
 
       syncServerOrders: (orders) =>
         set((state) => {
-          // Merge: update status for existing, add missing ones
           const merged = [...state.activeOrders];
+          let changed = false;
+
           for (const serverOrder of orders) {
             const idx = merged.findIndex((o) => o.id === serverOrder.id);
             if (idx >= 0) {
-              merged[idx] = { ...merged[idx], status: serverOrder.status, total: serverOrder.total ?? merged[idx].total };
+              const current = merged[idx]!;
+              const nextTotal = serverOrder.total ?? current.total;
+              if (
+                current.status !== serverOrder.status ||
+                current.total !== nextTotal
+              ) {
+                merged[idx] = {
+                  ...current,
+                  status: serverOrder.status,
+                  total: nextTotal,
+                };
+                changed = true;
+              }
             } else {
               merged.unshift(serverOrder);
+              changed = true;
             }
           }
-          // Update tableOrderId to the most recent appendable server order if not already set
+
           const latestOpen = orders.find((o) =>
-            ["pending", "confirmed", "preparing"].includes(o.status),
+            APPENDABLE_ORDER_STATUSES.includes(o.status),
           );
+          const nextTableOrderId =
+            state.tableOrderId ?? latestOpen?.id ?? null;
+
+          if (!changed && nextTableOrderId === state.tableOrderId) {
+            return state;
+          }
+
           return {
             activeOrders: merged.slice(0, 10),
-            tableOrderId: state.tableOrderId ?? latestOpen?.id ?? null,
+            tableOrderId: nextTableOrderId,
           };
         }),
     }),
